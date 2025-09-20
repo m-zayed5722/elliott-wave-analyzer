@@ -1350,6 +1350,446 @@ def display_confidence_analysis(confidence_data):
         for i, rec in enumerate(confidence_data['recommendations'], 1):
             st.markdown(f"{i}. {rec}")
 
+def calculate_technical_indicators(df):
+    """Calculate comprehensive technical indicators for confluence analysis"""
+    
+    if df is None or df.empty or len(df) < 20:
+        return {}
+    
+    indicators = {}
+    
+    try:
+        # RSI (Relative Strength Index)
+        def calculate_rsi(prices, window=14):
+            delta = prices.diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
+            rs = gain / loss
+            return 100 - (100 / (1 + rs))
+        
+        indicators['rsi'] = calculate_rsi(df['close'])
+        current_rsi = indicators['rsi'].iloc[-1] if not indicators['rsi'].empty else 50
+        
+        # MACD (Moving Average Convergence Divergence)
+        def calculate_macd(prices, fast=12, slow=26, signal=9):
+            ema_fast = prices.ewm(span=fast).mean()
+            ema_slow = prices.ewm(span=slow).mean()
+            macd_line = ema_fast - ema_slow
+            signal_line = macd_line.ewm(span=signal).mean()
+            histogram = macd_line - signal_line
+            return macd_line, signal_line, histogram
+        
+        macd_line, signal_line, histogram = calculate_macd(df['close'])
+        indicators['macd'] = macd_line
+        indicators['macd_signal'] = signal_line
+        indicators['macd_histogram'] = histogram
+        
+        # Moving Averages
+        indicators['sma_20'] = df['close'].rolling(window=20).mean()
+        indicators['sma_50'] = df['close'].rolling(window=50).mean()
+        indicators['ema_20'] = df['close'].ewm(span=20).mean()
+        indicators['ema_50'] = df['close'].ewm(span=50).mean()
+        
+        # Volume indicators
+        if 'volume' in df.columns:
+            indicators['volume_sma'] = df['volume'].rolling(window=20).mean()
+            indicators['volume_ratio'] = df['volume'] / indicators['volume_sma']
+            
+            # Volume-Price Trend (VPT)
+            indicators['vpt'] = (df['volume'] * (df['close'].pct_change())).cumsum()
+        
+        # Bollinger Bands
+        sma_20 = df['close'].rolling(window=20).mean()
+        std_20 = df['close'].rolling(window=20).std()
+        indicators['bb_upper'] = sma_20 + (std_20 * 2)
+        indicators['bb_lower'] = sma_20 - (std_20 * 2)
+        indicators['bb_middle'] = sma_20
+        
+        # Stochastic Oscillator
+        def calculate_stochastic(df, k_window=14, d_window=3):
+            lowest_low = df['low'].rolling(window=k_window).min()
+            highest_high = df['high'].rolling(window=k_window).max()
+            k_percent = 100 * ((df['close'] - lowest_low) / (highest_high - lowest_low))
+            d_percent = k_percent.rolling(window=d_window).mean()
+            return k_percent, d_percent
+        
+        indicators['stoch_k'], indicators['stoch_d'] = calculate_stochastic(df)
+        
+    except Exception as e:
+        st.error(f"Error calculating technical indicators: {str(e)}")
+    
+    return indicators
+
+def analyze_indicator_confluence(indicators, current_price, wave_analysis):
+    """Analyze confluence between technical indicators and Elliott Wave analysis"""
+    
+    if not indicators:
+        return {}
+    
+    confluence = {
+        'overall_score': 0,
+        'bullish_signals': [],
+        'bearish_signals': [],
+        'neutral_signals': [],
+        'indicator_analysis': {},
+        'wave_alignment': 'neutral'
+    }
+    
+    try:
+        # RSI Analysis
+        if 'rsi' in indicators and not indicators['rsi'].empty:
+            current_rsi = indicators['rsi'].iloc[-1]
+            rsi_analysis = {
+                'value': current_rsi,
+                'signal': 'neutral',
+                'strength': 'moderate'
+            }
+            
+            if current_rsi > 70:
+                rsi_analysis['signal'] = 'bearish'
+                rsi_analysis['strength'] = 'strong' if current_rsi > 80 else 'moderate'
+                confluence['bearish_signals'].append(f"📉 RSI Overbought ({current_rsi:.1f})")
+            elif current_rsi < 30:
+                rsi_analysis['signal'] = 'bullish'
+                rsi_analysis['strength'] = 'strong' if current_rsi < 20 else 'moderate'
+                confluence['bullish_signals'].append(f"📈 RSI Oversold ({current_rsi:.1f})")
+            else:
+                confluence['neutral_signals'].append(f"➖ RSI Neutral ({current_rsi:.1f})")
+            
+            confluence['indicator_analysis']['rsi'] = rsi_analysis
+        
+        # MACD Analysis
+        if all(key in indicators for key in ['macd', 'macd_signal', 'macd_histogram']):
+            current_macd = indicators['macd'].iloc[-1]
+            current_signal = indicators['macd_signal'].iloc[-1]
+            current_hist = indicators['macd_histogram'].iloc[-1]
+            prev_hist = indicators['macd_histogram'].iloc[-2] if len(indicators['macd_histogram']) > 1 else current_hist
+            
+            macd_analysis = {
+                'macd_line': current_macd,
+                'signal_line': current_signal,
+                'histogram': current_hist,
+                'signal': 'neutral',
+                'crossover': False
+            }
+            
+            # MACD Line vs Signal Line
+            if current_macd > current_signal:
+                if current_hist > prev_hist:
+                    macd_analysis['signal'] = 'bullish'
+                    confluence['bullish_signals'].append("📈 MACD Bullish Momentum")
+                else:
+                    confluence['neutral_signals'].append("➖ MACD Above Signal (Weakening)")
+            else:
+                if current_hist < prev_hist:
+                    macd_analysis['signal'] = 'bearish'
+                    confluence['bearish_signals'].append("📉 MACD Bearish Momentum")
+                else:
+                    confluence['neutral_signals'].append("➖ MACD Below Signal (Weakening)")
+            
+            # Check for crossovers
+            if len(indicators['macd']) > 1 and len(indicators['macd_signal']) > 1:
+                prev_macd = indicators['macd'].iloc[-2]
+                prev_signal = indicators['macd_signal'].iloc[-2]
+                
+                if prev_macd <= prev_signal and current_macd > current_signal:
+                    macd_analysis['crossover'] = True
+                    confluence['bullish_signals'].append("🔥 MACD Bullish Crossover")
+                elif prev_macd >= prev_signal and current_macd < current_signal:
+                    macd_analysis['crossover'] = True
+                    confluence['bearish_signals'].append("🔥 MACD Bearish Crossover")
+            
+            confluence['indicator_analysis']['macd'] = macd_analysis
+        
+        # Moving Average Analysis
+        if all(key in indicators for key in ['sma_20', 'sma_50']):
+            current_sma20 = indicators['sma_20'].iloc[-1]
+            current_sma50 = indicators['sma_50'].iloc[-1]
+            
+            ma_analysis = {
+                'sma_20': current_sma20,
+                'sma_50': current_sma50,
+                'price_vs_ma20': 'above' if current_price > current_sma20 else 'below',
+                'price_vs_ma50': 'above' if current_price > current_sma50 else 'below',
+                'ma_trend': 'bullish' if current_sma20 > current_sma50 else 'bearish'
+            }
+            
+            # Price vs Moving Averages
+            if current_price > current_sma20 > current_sma50:
+                confluence['bullish_signals'].append("📈 Price Above Both MAs (Bullish)")
+            elif current_price < current_sma20 < current_sma50:
+                confluence['bearish_signals'].append("📉 Price Below Both MAs (Bearish)")
+            else:
+                confluence['neutral_signals'].append("➖ Mixed Moving Average Signals")
+            
+            confluence['indicator_analysis']['moving_averages'] = ma_analysis
+        
+        # Volume Analysis
+        if 'volume_ratio' in indicators and not indicators['volume_ratio'].empty:
+            current_volume_ratio = indicators['volume_ratio'].iloc[-1]
+            
+            volume_analysis = {
+                'volume_ratio': current_volume_ratio,
+                'signal': 'neutral'
+            }
+            
+            if current_volume_ratio > 1.5:
+                volume_analysis['signal'] = 'strong_interest'
+                confluence['bullish_signals'].append(f"📊 High Volume Confirmation ({current_volume_ratio:.1f}x)")
+            elif current_volume_ratio < 0.7:
+                volume_analysis['signal'] = 'low_interest'
+                confluence['neutral_signals'].append(f"📊 Low Volume ({current_volume_ratio:.1f}x)")
+            else:
+                confluence['neutral_signals'].append(f"📊 Average Volume ({current_volume_ratio:.1f}x)")
+            
+            confluence['indicator_analysis']['volume'] = volume_analysis
+        
+        # Stochastic Analysis
+        if all(key in indicators for key in ['stoch_k', 'stoch_d']):
+            current_stoch_k = indicators['stoch_k'].iloc[-1]
+            current_stoch_d = indicators['stoch_d'].iloc[-1]
+            
+            stoch_analysis = {
+                'k': current_stoch_k,
+                'd': current_stoch_d,
+                'signal': 'neutral'
+            }
+            
+            if current_stoch_k > 80 and current_stoch_d > 80:
+                stoch_analysis['signal'] = 'bearish'
+                confluence['bearish_signals'].append(f"📉 Stochastic Overbought ({current_stoch_k:.1f})")
+            elif current_stoch_k < 20 and current_stoch_d < 20:
+                stoch_analysis['signal'] = 'bullish'
+                confluence['bullish_signals'].append(f"📈 Stochastic Oversold ({current_stoch_k:.1f})")
+            
+            confluence['indicator_analysis']['stochastic'] = stoch_analysis
+        
+        # Calculate overall confluence score
+        bullish_count = len(confluence['bullish_signals'])
+        bearish_count = len(confluence['bearish_signals'])
+        total_signals = bullish_count + bearish_count + len(confluence['neutral_signals'])
+        
+        if total_signals > 0:
+            confluence['overall_score'] = ((bullish_count - bearish_count) / total_signals) * 100
+            
+            if confluence['overall_score'] > 30:
+                confluence['wave_alignment'] = 'bullish'
+            elif confluence['overall_score'] < -30:
+                confluence['wave_alignment'] = 'bearish'
+            else:
+                confluence['wave_alignment'] = 'neutral'
+        
+        # Wave Analysis Alignment
+        if wave_analysis:
+            wave_trend = determine_wave_trend_direction(wave_analysis.get('zigzag_pivots', []))
+            
+            if 'upward' in wave_trend and confluence['wave_alignment'] == 'bullish':
+                confluence['bullish_signals'].append("🎯 Elliott Wave & Technical Indicators Aligned (Bullish)")
+            elif 'downward' in wave_trend and confluence['wave_alignment'] == 'bearish':
+                confluence['bearish_signals'].append("🎯 Elliott Wave & Technical Indicators Aligned (Bearish)")
+            elif 'upward' in wave_trend and confluence['wave_alignment'] == 'bearish':
+                confluence['neutral_signals'].append("⚠️ Elliott Wave Bullish vs Technical Bearish - Mixed Signals")
+            elif 'downward' in wave_trend and confluence['wave_alignment'] == 'bullish':
+                confluence['neutral_signals'].append("⚠️ Elliott Wave Bearish vs Technical Bullish - Mixed Signals")
+        
+    except Exception as e:
+        st.error(f"Error analyzing indicator confluence: {str(e)}")
+    
+    return confluence
+
+def display_technical_indicators(indicators, confluence, current_price):
+    """Display technical indicators analysis with confluence"""
+    
+    if not indicators:
+        st.info("💡 Technical indicators require sufficient price data")
+        return
+    
+    st.markdown("### 📊 **Technical Indicator Analysis**")
+    
+    # Confluence Score
+    if confluence and 'overall_score' in confluence:
+        score = confluence['overall_score']
+        alignment = confluence['wave_alignment']
+        
+        score_color = '#28a745' if score > 30 else '#dc3545' if score < -30 else '#ffc107'
+        alignment_text = alignment.title()
+        
+        st.markdown(f"""
+        <div class="price-card" style="background: linear-gradient(135deg, {score_color}22, {score_color}11); border: 3px solid {score_color}; text-align: center;">
+            <h3 style="color: {score_color}; margin-bottom: 10px;">Technical Confluence Score</h3>
+            <h2 style="color: #212529; margin: 10px 0;">{score:+.0f}%</h2>
+            <h4 style="color: {score_color}; margin: 0;">{alignment_text} Bias</h4>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Create tabs for different indicator categories
+    tab1, tab2, tab3, tab4 = st.tabs(["📈 Momentum", "📊 Trend", "📉 Oscillators", "🔄 Confluence"])
+    
+    with tab1:
+        st.markdown("#### 🚀 Momentum Indicators")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # RSI
+            if 'rsi' in indicators and not indicators['rsi'].empty:
+                current_rsi = indicators['rsi'].iloc[-1]
+                rsi_color = '#dc3545' if current_rsi > 70 else '#28a745' if current_rsi < 30 else '#ffc107'
+                rsi_status = 'Overbought' if current_rsi > 70 else 'Oversold' if current_rsi < 30 else 'Neutral'
+                
+                st.markdown(f"""
+                <div class="price-card" style="border-left: 4px solid {rsi_color};">
+                    <h4 style="color: {rsi_color}; margin-bottom: 10px;">RSI (14)</h4>
+                    <h3 style="color: #212529; margin: 0;">{current_rsi:.1f}</h3>
+                    <p style="color: #6c757d; margin: 5px 0 0 0;">{rsi_status}</p>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        with col2:
+            # Stochastic
+            if 'stoch_k' in indicators and not indicators['stoch_k'].empty:
+                current_stoch = indicators['stoch_k'].iloc[-1]
+                stoch_color = '#dc3545' if current_stoch > 80 else '#28a745' if current_stoch < 20 else '#ffc107'
+                stoch_status = 'Overbought' if current_stoch > 80 else 'Oversold' if current_stoch < 20 else 'Neutral'
+                
+                st.markdown(f"""
+                <div class="price-card" style="border-left: 4px solid {stoch_color};">
+                    <h4 style="color: {stoch_color}; margin-bottom: 10px;">Stochastic %K</h4>
+                    <h3 style="color: #212529; margin: 0;">{current_stoch:.1f}%</h3>
+                    <p style="color: #6c757d; margin: 5px 0 0 0;">{stoch_status}</p>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        # MACD
+        if all(key in indicators for key in ['macd', 'macd_signal']):
+            current_macd = indicators['macd'].iloc[-1]
+            current_signal = indicators['macd_signal'].iloc[-1]
+            macd_color = '#28a745' if current_macd > current_signal else '#dc3545'
+            macd_status = 'Bullish' if current_macd > current_signal else 'Bearish'
+            
+            st.markdown(f"""
+            <div class="price-card" style="border-left: 4px solid {macd_color};">
+                <h4 style="color: {macd_color}; margin-bottom: 10px;">MACD</h4>
+                <div style="display: flex; justify-content: space-between;">
+                    <div>
+                        <strong>MACD:</strong> {current_macd:.4f}<br>
+                        <strong>Signal:</strong> {current_signal:.4f}
+                    </div>
+                    <div style="text-align: right;">
+                        <h4 style="color: {macd_color}; margin: 0;">{macd_status}</h4>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    with tab2:
+        st.markdown("#### 📈 Trend Indicators")
+        
+        # Moving Averages
+        if 'sma_20' in indicators and 'sma_50' in indicators:
+            sma20 = indicators['sma_20'].iloc[-1]
+            sma50 = indicators['sma_50'].iloc[-1]
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                price_vs_sma20_color = '#28a745' if current_price > sma20 else '#dc3545'
+                st.markdown(f"""
+                <div class="price-card" style="border-left: 4px solid {price_vs_sma20_color};">
+                    <h4 style="color: #6c757d; margin-bottom: 10px;">SMA 20</h4>
+                    <h3 style="color: #212529; margin: 0;">${sma20:.2f}</h3>
+                    <p style="color: {price_vs_sma20_color}; margin: 5px 0 0 0;">
+                        {'Above' if current_price > sma20 else 'Below'} Price
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col2:
+                price_vs_sma50_color = '#28a745' if current_price > sma50 else '#dc3545'
+                st.markdown(f"""
+                <div class="price-card" style="border-left: 4px solid {price_vs_sma50_color};">
+                    <h4 style="color: #6c757d; margin-bottom: 10px;">SMA 50</h4>
+                    <h3 style="color: #212529; margin: 0;">${sma50:.2f}</h3>
+                    <p style="color: {price_vs_sma50_color}; margin: 5px 0 0 0;">
+                        {'Above' if current_price > sma50 else 'Below'} Price
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col3:
+                ma_trend_color = '#28a745' if sma20 > sma50 else '#dc3545'
+                ma_trend = 'Bullish' if sma20 > sma50 else 'Bearish'
+                st.markdown(f"""
+                <div class="price-card" style="border-left: 4px solid {ma_trend_color};">
+                    <h4 style="color: #6c757d; margin-bottom: 10px;">MA Trend</h4>
+                    <h3 style="color: {ma_trend_color}; margin: 0;">{ma_trend}</h3>
+                    <p style="color: #6c757d; margin: 5px 0 0 0;">SMA 20 vs 50</p>
+                </div>
+                """, unsafe_allow_html=True)
+    
+    with tab3:
+        st.markdown("#### 📊 Oscillators & Volume")
+        
+        # Bollinger Bands Position
+        if all(key in indicators for key in ['bb_upper', 'bb_lower', 'bb_middle']):
+            bb_upper = indicators['bb_upper'].iloc[-1]
+            bb_lower = indicators['bb_lower'].iloc[-1]
+            bb_middle = indicators['bb_middle'].iloc[-1]
+            
+            bb_position = 'Upper' if current_price > bb_middle else 'Lower'
+            bb_squeeze = (bb_upper - bb_lower) / bb_middle < 0.1
+            bb_color = '#dc3545' if current_price > bb_upper else '#28a745' if current_price < bb_lower else '#ffc107'
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown(f"""
+                <div class="price-card" style="border-left: 4px solid {bb_color};">
+                    <h4 style="color: #6c757d; margin-bottom: 10px;">Bollinger Position</h4>
+                    <h3 style="color: {bb_color}; margin: 0;">{bb_position} Band</h3>
+                    <p style="color: #6c757d; margin: 5px 0 0 0;">
+                        {'Squeeze' if bb_squeeze else 'Normal'} Width
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        # Volume Analysis
+        if 'volume_ratio' in indicators:
+            volume_ratio = indicators['volume_ratio'].iloc[-1]
+            volume_color = '#28a745' if volume_ratio > 1.2 else '#ffc107' if volume_ratio > 0.8 else '#dc3545'
+            volume_status = 'High' if volume_ratio > 1.2 else 'Normal' if volume_ratio > 0.8 else 'Low'
+            
+            with col2 if 'col2' in locals() else st.columns(1)[0]:
+                st.markdown(f"""
+                <div class="price-card" style="border-left: 4px solid {volume_color};">
+                    <h4 style="color: #6c757d; margin-bottom: 10px;">Volume</h4>
+                    <h3 style="color: {volume_color}; margin: 0;">{volume_ratio:.1f}x</h3>
+                    <p style="color: #6c757d; margin: 5px 0 0 0;">{volume_status} vs Average</p>
+                </div>
+                """, unsafe_allow_html=True)
+    
+    with tab4:
+        st.markdown("#### 🔄 Signal Confluence")
+        
+        if confluence:
+            # Bullish Signals
+            if confluence.get('bullish_signals'):
+                st.markdown("##### 📈 **Bullish Signals**")
+                for signal in confluence['bullish_signals']:
+                    st.markdown(f"- {signal}")
+            
+            # Bearish Signals  
+            if confluence.get('bearish_signals'):
+                st.markdown("##### 📉 **Bearish Signals**")
+                for signal in confluence['bearish_signals']:
+                    st.markdown(f"- {signal}")
+            
+            # Neutral/Mixed Signals
+            if confluence.get('neutral_signals'):
+                st.markdown("##### ➖ **Neutral/Mixed Signals**")
+                for signal in confluence['neutral_signals']:
+                    st.markdown(f"- {signal}")
+
 def create_multi_timeframe_analysis(ticker, timeframes=['daily', '4h', '1h']):
     """Create multi-timeframe Elliott Wave analysis"""
     
@@ -2046,6 +2486,42 @@ def main():
                             display_confidence_analysis(confidence_data)
                     else:
                         st.info("💡 Advanced confidence analysis requires sufficient wave data (minimum 3 pivots)")
+                
+                # Technical Indicators Section
+                st.markdown("---")
+                with st.expander("📊 **Technical Indicator Analysis**", expanded=False):
+                    price_data = st.session_state.price_data
+                    
+                    if price_data is not None and not price_data.empty and len(price_data) >= 50:
+                        with st.spinner("Calculating technical indicators..."):
+                            # Calculate all technical indicators
+                            indicators = calculate_technical_indicators(price_data)
+                            
+                            if indicators:
+                                # Analyze confluence with Elliott Wave
+                                current_price = price_data['close'].iloc[-1]
+                                confluence = analyze_indicator_confluence(indicators, current_price, analysis)
+                                
+                                # Display technical analysis
+                                display_technical_indicators(indicators, confluence, current_price)
+                                
+                                # Add summary insight
+                                if confluence and confluence.get('overall_score') is not None:
+                                    score = confluence['overall_score']
+                                    alignment = confluence['wave_alignment']
+                                    
+                                    st.markdown("#### 🎯 **Technical Summary**")
+                                    if alignment == 'bullish' and score > 30:
+                                        st.success(f"✅ **Strong Bullish Confluence** ({score:+.0f}%) - Technical indicators support Elliott Wave analysis")
+                                    elif alignment == 'bearish' and score < -30:
+                                        st.error(f"⚠️ **Strong Bearish Confluence** ({score:+.0f}%) - Technical indicators support Elliott Wave analysis")
+                                    else:
+                                        st.warning(f"⚡ **Mixed Signals** ({score:+.0f}%) - Technical indicators show conflicting signals with Elliott Wave")
+                            else:
+                                st.info("💡 Unable to calculate technical indicators with current data")
+                    else:
+                        st.info("💡 Technical indicators require at least 50 data points for accurate analysis")
+            
             
             
             
