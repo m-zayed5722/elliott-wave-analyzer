@@ -566,10 +566,12 @@ def generate_chart_summary(wave_analysis, invalidation_levels, ticker, primary_c
     
     # If we have pivots but weak wave analysis
     if len(pivots) > 0 and (not primary or getattr(primary, 'confidence_score', 0) < 30):
-        trend_direction = determine_overall_trend(pivots)
+        # Use same trend logic as price targets for consistency
+        trend_direction = determine_wave_trend_direction(pivots)
         pivot_count = len(pivots)
         
-        return f"📊 **{ticker} Market Structure Analysis**: Detected **{pivot_count} pivot points** showing {trend_direction} market structure. While no definitive Elliott Wave pattern emerges (confidence too low), the price action suggests {'continued momentum' if 'trend' in trend_direction else 'consolidation or complex correction'}. **Recommendation**: Monitor for clearer pattern development or adjust ZigZag sensitivity. Current structure may be in early wave formation or complex corrective phase requiring more price development for proper classification."
+        trend_desc = f"**{trend_direction}**" if "trend" in trend_direction else f"**{trend_direction}**"
+        return f"📊 **{ticker} Market Structure Analysis**: Detected **{pivot_count} pivot points** showing {trend_desc} market structure. While no definitive Elliott Wave pattern emerges (confidence too low), the price action suggests {'continued momentum' if 'trend' in trend_direction else 'consolidation or complex correction'}. **Recommendation**: Monitor for clearer pattern development or adjust ZigZag sensitivity. Current structure may be in early wave formation or complex corrective phase requiring more price development for proper classification."
     
     # Standard analysis when we have good primary count
     primary_score = getattr(primary, 'confidence_score', 0) if hasattr(primary, 'confidence_score') else primary.get('confidence_score', 0)
@@ -600,6 +602,17 @@ def generate_chart_summary(wave_analysis, invalidation_levels, ticker, primary_c
         emoji = "�🔴"
     
     summary += f"The analysis {confidence_text} with {primary_score:.0f}% confidence {emoji}. "
+    
+    # Add consistent trend context based on actual wave direction
+    wave_trend_direction = determine_wave_trend_direction(pivots) if len(pivots) >= 3 else "neutral"
+    if "upward" in wave_trend_direction:
+        trend_context = "The overall wave structure indicates **bullish momentum** with potential for higher prices. "
+    elif "downward" in wave_trend_direction:
+        trend_context = "The overall wave structure indicates **bearish pressure** with potential for lower prices. "
+    else:
+        trend_context = "The wave structure shows **sideways/consolidating** price action without clear directional bias. "
+    
+    summary += trend_context
     
     # Pattern interpretation with more detail
     if "impulse" in primary_pattern.lower():
@@ -673,6 +686,24 @@ def determine_overall_trend(pivots):
         return "a **downward trending**" 
     else:
         return "a **sideways/consolidating**"
+
+def determine_wave_trend_direction(pivots):
+    """Determine wave trend direction consistent with price target calculations"""
+    if len(pivots) < 3:
+        return "neutral"
+    
+    # Use the same logic as calculate_price_targets for consistency
+    recent_pivots = pivots[-5:] if len(pivots) >= 5 else pivots
+    if len(recent_pivots) >= 3:
+        wave_1_start = recent_pivots[0]['price']
+        wave_1_end = recent_pivots[1]['price'] 
+        
+        if wave_1_end > wave_1_start:
+            return "upward trending"
+        elif wave_1_end < wave_1_start:
+            return "downward trending"
+    
+    return "sideways/consolidating"
 
 def calculate_price_targets(analysis_results, current_price):
     """Calculate Elliott Wave price targets based on current analysis"""
