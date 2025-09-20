@@ -36,70 +36,29 @@ st.markdown("""
     .main > div {
         padding-top: 2rem;
     }
-    .stMetric {
-        background-color: #f0f2f6;
-        padding: 10px;
-        border-radius: 5px;
-        border-left: 4px solid #1f77b4;
-    }
     .wave-score {
         font-size: 1.2em;
         font-weight: bold;
         color: #1f77b4;
     }
     
-    /* Fix for metric visibility issues */
-    .metric-container {
-        background-color: #fafafa;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border: 1px solid #e0e0e0;
-        margin: 0.5rem 0;
+    /* Ensure all text is visible */
+    .stApp {
+        color: #262730;
     }
     
-    /* Ensure metric text is visible */
-    [data-testid="metric-container"] {
-        background-color: #fafafa !important;
-        border: 1px solid #e0e0e0 !important;
-        padding: 1rem !important;
-        border-radius: 0.5rem !important;
+    .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6 {
+        color: #262730;
     }
     
-    [data-testid="metric-container"] > div {
-        color: #262730 !important;
-    }
-    
-    [data-testid="metric-container"] label {
-        color: #262730 !important;
-        font-weight: 600 !important;
-    }
-    
-    [data-testid="metric-container"] [data-testid="metric-value"] {
-        color: #262730 !important;
-        font-size: 1.2rem !important;
-        font-weight: 600 !important;
-    }
-    
-    [data-testid="metric-container"] [data-testid="metric-delta"] {
-        font-weight: 500 !important;
-    }
-    
-    /* Dark theme compatibility */
-    .stApp[data-theme="dark"] [data-testid="metric-container"] {
-        background-color: #2e2e2e !important;
-        border-color: #4a4a4a !important;
-    }
-    
-    .stApp[data-theme="dark"] [data-testid="metric-container"] > div {
-        color: #ffffff !important;
-    }
-    
-    .stApp[data-theme="dark"] [data-testid="metric-container"] label {
-        color: #ffffff !important;
-    }
-    
-    .stApp[data-theme="dark"] [data-testid="metric-container"] [data-testid="metric-value"] {
-        color: #ffffff !important;
+    /* Custom card styling for better visibility */
+    .price-card {
+        background-color: #ffffff;
+        border: 2px solid #dee2e6;
+        border-radius: 8px;
+        padding: 15px;
+        margin: 10px 0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -819,7 +778,7 @@ def create_multi_timeframe_analysis(ticker, timeframes=['daily', '4h', '1h']):
     return multi_analysis
 
 def display_price_targets(targets, current_price):
-    """Display price targets in an organized format"""
+    """Display price targets in an organized format with better visibility"""
     
     if not targets:
         st.info("No price targets calculated - need more pivot data")
@@ -827,7 +786,7 @@ def display_price_targets(targets, current_price):
     
     st.subheader("🎯 Price Targets & Levels")
     
-    # Wave Targets
+    # Wave Targets - Use HTML cards instead of metrics for better visibility
     wave_targets = targets.get('wave_targets', {})
     if wave_targets:
         st.markdown("**📈 Elliott Wave Price Targets:**")
@@ -839,92 +798,89 @@ def display_price_targets(targets, current_price):
                 target = wave_targets['wave_3_target']
                 distance = ((target - current_price) / current_price) * 100
                 
-                # Use colored container for better visibility
-                if distance > 0:
-                    delta_color = "normal"
-                else:
-                    delta_color = "inverse"
-                
-                st.metric(
-                    "🎯 Wave 3 Target",
-                    f"${target:.2f}",
-                    f"{distance:+.1f}%",
-                    delta_color=delta_color,
-                    help="Primary Wave 3 target (1.618x Wave 1)"
-                )
+                # Create custom styled card
+                color = "#28a745" if distance > 0 else "#dc3545"
+                st.markdown(f"""
+                <div style="
+                    background-color: #f8f9fa;
+                    border: 2px solid {color};
+                    border-radius: 8px;
+                    padding: 15px;
+                    margin: 10px 0;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                ">
+                    <h4 style="color: #343a40; margin: 0 0 5px 0; font-size: 16px;">🎯 Wave 3 Target</h4>
+                    <h3 style="color: #212529; margin: 0; font-size: 24px; font-weight: bold;">${target:.2f}</h3>
+                    <p style="color: {color}; margin: 5px 0 0 0; font-size: 16px; font-weight: bold;">{distance:+.1f}%</p>
+                    <small style="color: #6c757d;">Primary Wave 3 target (1.618x Wave 1)</small>
+                </div>
+                """, unsafe_allow_html=True)
             
             if 'wave_5_target' in wave_targets:
                 target = wave_targets['wave_5_target'] 
                 distance = ((target - current_price) / current_price) * 100
                 
-                if distance > 0:
-                    delta_color = "normal"
-                else:
-                    delta_color = "inverse"
-                
-                st.metric(
-                    "🏁 Wave 5 Target", 
-                    f"${target:.2f}",
-                    f"{distance:+.1f}%",
-                    delta_color=delta_color,
-                    help="Wave 5 target (equality with Wave 1)"
-                )
+                color = "#28a745" if distance > 0 else "#dc3545"
+                st.markdown(f"""
+                <div style="
+                    background-color: #f8f9fa;
+                    border: 2px solid {color};
+                    border-radius: 8px;
+                    padding: 15px;
+                    margin: 10px 0;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                ">
+                    <h4 style="color: #343a40; margin: 0 0 5px 0; font-size: 16px;">🏁 Wave 5 Target</h4>
+                    <h3 style="color: #212529; margin: 0; font-size: 24px; font-weight: bold;">${target:.2f}</h3>
+                    <p style="color: {color}; margin: 5px 0 0 0; font-size: 16px; font-weight: bold;">{distance:+.1f}%</p>
+                    <small style="color: #6c757d;">Wave 5 target (equality with Wave 1)</small>
+                </div>
+                """, unsafe_allow_html=True)
         
         with col2:
             if 'wave_3_extension' in wave_targets:
                 target = wave_targets['wave_3_extension']
                 distance = ((target - current_price) / current_price) * 100
                 
-                if distance > 0:
-                    delta_color = "normal"
-                else:
-                    delta_color = "inverse"
-                
-                st.metric(
-                    "🚀 Wave 3 Extension",
-                    f"${target:.2f}", 
-                    f"{distance:+.1f}%",
-                    delta_color=delta_color,
-                    help="Extended Wave 3 target (2.618x Wave 1)"
-                )
+                color = "#28a745" if distance > 0 else "#dc3545"
+                st.markdown(f"""
+                <div style="
+                    background-color: #f8f9fa;
+                    border: 2px solid {color};
+                    border-radius: 8px;
+                    padding: 15px;
+                    margin: 10px 0;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                ">
+                    <h4 style="color: #343a40; margin: 0 0 5px 0; font-size: 16px;">🚀 Wave 3 Extension</h4>
+                    <h3 style="color: #212529; margin: 0; font-size: 24px; font-weight: bold;">${target:.2f}</h3>
+                    <p style="color: {color}; margin: 5px 0 0 0; font-size: 16px; font-weight: bold;">{distance:+.1f}%</p>
+                    <small style="color: #6c757d;">Extended Wave 3 target (2.618x Wave 1)</small>
+                </div>
+                """, unsafe_allow_html=True)
                 
             if 'wave_5_extension' in wave_targets:
                 target = wave_targets['wave_5_extension']
                 distance = ((target - current_price) / current_price) * 100
                 
-                if distance > 0:
-                    delta_color = "normal"
-                else:
-                    delta_color = "inverse"
-                
-                st.metric(
-                    "🎯 Wave 5 Extension",
-                    f"${target:.2f}",
-                    f"{distance:+.1f}%",
-                    delta_color=delta_color,
-                    help="Extended Wave 5 target"
-                )
-        
-        # Alternative display using colored info boxes
-        st.markdown("---")
-        st.markdown("**📊 Quick Price Target Summary:**")
-        
-        target_summary = []
-        if 'wave_3_target' in wave_targets:
-            target = wave_targets['wave_3_target']
-            distance = ((target - current_price) / current_price) * 100
-            target_summary.append(f"• **Wave 3**: ${target:.2f} ({distance:+.1f}%)")
-        
-        if 'wave_5_target' in wave_targets:
-            target = wave_targets['wave_5_target']
-            distance = ((target - current_price) / current_price) * 100
-            target_summary.append(f"• **Wave 5**: ${target:.2f} ({distance:+.1f}%)")
-        
-        if target_summary:
-            for summary in target_summary:
-                st.markdown(summary)
+                color = "#28a745" if distance > 0 else "#dc3545"
+                st.markdown(f"""
+                <div style="
+                    background-color: #f8f9fa;
+                    border: 2px solid {color};
+                    border-radius: 8px;
+                    padding: 15px;
+                    margin: 10px 0;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                ">
+                    <h4 style="color: #343a40; margin: 0 0 5px 0; font-size: 16px;">🎯 Wave 5 Extension</h4>
+                    <h3 style="color: #212529; margin: 0; font-size: 24px; font-weight: bold;">${target:.2f}</h3>
+                    <p style="color: {color}; margin: 5px 0 0 0; font-size: 16px; font-weight: bold;">{distance:+.1f}%</p>
+                    <small style="color: #6c757d;">Extended Wave 5 target</small>
+                </div>
+                """, unsafe_allow_html=True)
     
-    # Support/Resistance with improved visibility
+    # Support/Resistance with custom styling
     sr_levels = targets.get('support_resistance', {})
     if sr_levels:
         st.markdown("---")
@@ -937,64 +893,82 @@ def display_price_targets(targets, current_price):
                 level = sr_levels['major_support']
                 distance = ((level - current_price) / current_price) * 100
                 
-                st.metric(
-                    "🔻 Major Support",
-                    f"${level:.2f}",
-                    f"{distance:+.1f}%",
-                    delta_color="inverse" if distance < 0 else "normal"
-                )
+                st.markdown(f"""
+                <div style="
+                    background-color: #fff3cd;
+                    border: 2px solid #856404;
+                    border-radius: 8px;
+                    padding: 15px;
+                    margin: 10px 0;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                ">
+                    <h4 style="color: #856404; margin: 0 0 5px 0; font-size: 16px;">🔻 Major Support</h4>
+                    <h3 style="color: #212529; margin: 0; font-size: 24px; font-weight: bold;">${level:.2f}</h3>
+                    <p style="color: #856404; margin: 5px 0 0 0; font-size: 16px; font-weight: bold;">{distance:+.1f}%</p>
+                    <small style="color: #6c757d;">Strong support level from pivots</small>
+                </div>
+                """, unsafe_allow_html=True)
                 
             if 'immediate_support' in sr_levels:
                 level = sr_levels['immediate_support']
-                distance = ((level - current_price) / current_price) * 100  
+                distance = ((level - current_price) / current_price) * 100
                 
-                st.metric(
-                    "📉 Immediate Support",
-                    f"${level:.2f}",
-                    f"{distance:+.1f}%",
-                    delta_color="inverse" if distance < 0 else "normal"
-                )
+                st.markdown(f"""
+                <div style="
+                    background-color: #f8d7da;
+                    border: 2px solid #721c24;
+                    border-radius: 8px;
+                    padding: 15px;
+                    margin: 10px 0;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                ">
+                    <h4 style="color: #721c24; margin: 0 0 5px 0; font-size: 16px;">📉 Immediate Support</h4>
+                    <h3 style="color: #212529; margin: 0; font-size: 24px; font-weight: bold;">${level:.2f}</h3>
+                    <p style="color: #721c24; margin: 5px 0 0 0; font-size: 16px; font-weight: bold;">{distance:+.1f}%</p>
+                    <small style="color: #6c757d;">Nearest support level</small>
+                </div>
+                """, unsafe_allow_html=True)
         
         with col2:
             if 'major_resistance' in sr_levels:
                 level = sr_levels['major_resistance']
                 distance = ((level - current_price) / current_price) * 100
                 
-                st.metric(
-                    "🔺 Major Resistance", 
-                    f"${level:.2f}",
-                    f"{distance:+.1f}%",
-                    delta_color="normal" if distance > 0 else "inverse"
-                )
+                st.markdown(f"""
+                <div style="
+                    background-color: #d1ecf1;
+                    border: 2px solid #0c5460;
+                    border-radius: 8px;
+                    padding: 15px;
+                    margin: 10px 0;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                ">
+                    <h4 style="color: #0c5460; margin: 0 0 5px 0; font-size: 16px;">🔺 Major Resistance</h4>
+                    <h3 style="color: #212529; margin: 0; font-size: 24px; font-weight: bold;">${level:.2f}</h3>
+                    <p style="color: #0c5460; margin: 5px 0 0 0; font-size: 16px; font-weight: bold;">{distance:+.1f}%</p>
+                    <small style="color: #6c757d;">Strong resistance level from pivots</small>
+                </div>
+                """, unsafe_allow_html=True)
                 
             if 'immediate_resistance' in sr_levels:
                 level = sr_levels['immediate_resistance']
                 distance = ((level - current_price) / current_price) * 100
                 
-                st.metric(
-                    "📈 Immediate Resistance",
-                    f"${level:.2f}",
-                    f"{distance:+.1f}%",
-                    delta_color="normal" if distance > 0 else "inverse"
-                )
-        
-        # Alternative text-based summary for support/resistance
-        st.markdown("**📋 Support/Resistance Summary:**")
-        sr_summary = []
-        
-        if 'major_support' in sr_levels:
-            level = sr_levels['major_support']
-            distance = ((level - current_price) / current_price) * 100
-            sr_summary.append(f"• **Major Support**: ${level:.2f} ({distance:+.1f}%)")
-        
-        if 'major_resistance' in sr_levels:
-            level = sr_levels['major_resistance']
-            distance = ((level - current_price) / current_price) * 100
-            sr_summary.append(f"• **Major Resistance**: ${level:.2f} ({distance:+.1f}%)")
-        
-        if sr_summary:
-            for summary in sr_summary:
-                st.markdown(summary)
+                st.markdown(f"""
+                <div style="
+                    background-color: #d4edda;
+                    border: 2px solid #155724;
+                    border-radius: 8px;
+                    padding: 15px;
+                    margin: 10px 0;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                ">
+                    <h4 style="color: #155724; margin: 0 0 5px 0; font-size: 16px;">📈 Immediate Resistance</h4>
+                    <h3 style="color: #212529; margin: 0; font-size: 24px; font-weight: bold;">${level:.2f}</h3>
+                    <p style="color: #155724; margin: 5px 0 0 0; font-size: 16px; font-weight: bold;">{distance:+.1f}%</p>
+                    <small style="color: #6c757d;">Nearest resistance level</small>
+                </div>
+                """, unsafe_allow_html=True)
 
 def scan_multiple_stocks(symbols, timeframe='daily', threshold=4.0):
     """Scan multiple stocks for Elliott Wave patterns"""
@@ -1294,7 +1268,7 @@ def main():
                 
                 # Display chart
                 fig = create_candlestick_chart(df, analysis)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
                 
                 # Add concise analysis summary next to the chart
                 if analysis:
@@ -1442,7 +1416,7 @@ def main():
                                     if tf_df is not None and not tf_df.empty:
                                         fig_mini = create_candlestick_chart(tf_df, tf_analysis)
                                         fig_mini.update_layout(height=300)
-                                        st.plotly_chart(fig_mini, use_container_width=True)
+                                        st.plotly_chart(fig_mini, width="stretch")
                                 else:
                                     st.warning(f"No clear pattern detected in {tf.upper()} timeframe")
                     
@@ -1542,7 +1516,7 @@ def main():
                     ret_df['price_formatted'] = ret_df['price'].apply(lambda x: f"${x:.2f}")
                     st.dataframe(
                         ret_df[['level_pct', 'price_formatted']], 
-                        use_container_width=True,
+                        width="stretch",
                         hide_index=True
                     )
                 else:
@@ -1557,7 +1531,7 @@ def main():
                     ext_df['price_formatted'] = ext_df['price'].apply(lambda x: f"${x:.2f}")
                     st.dataframe(
                         ext_df[['level_pct', 'price_formatted']], 
-                        use_container_width=True,
+                        width="stretch",
                         hide_index=True
                     )
                 else:
@@ -1571,7 +1545,7 @@ def main():
                 pivot_df['price_formatted'] = pivot_df['price'].apply(lambda x: f"${x:.2f}")
                 pivot_df = pivot_df[['timestamp', 'price_formatted', 'type']]
                 pivot_df.columns = ['Date/Time', 'Price', 'Type']
-                st.dataframe(pivot_df, use_container_width=True, hide_index=True)
+                st.dataframe(pivot_df, width="stretch", hide_index=True)
             
             st.write("**⚙️ Analysis Parameters**")
             st.json({
@@ -1709,9 +1683,16 @@ def main():
             """)
     
     st.markdown("---")
+    
+    # Get GitHub info safely without secrets dependency
+    try:
+        github_user = st.secrets.get('GITHUB_USER', 'm-zayed5722')
+    except:
+        github_user = 'm-zayed5722'
+    
     st.markdown(
         "*Built with Streamlit • Powered by Yahoo Finance • "
-        f"[View Source Code](https://github.com/{st.secrets.get('GITHUB_USER', 'm-zayed5722')}/elliott-wave-analyzer)*"
+        f"[View Source Code](https://github.com/{github_user}/elliott-wave-analyzer)*"
     )
 
 if __name__ == "__main__":
