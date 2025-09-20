@@ -96,6 +96,30 @@ st.markdown("""
         text-align: center;
         margin: 20px 0;
     }
+    
+    /* Wave validation styling */
+    .validation-card {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 15px;
+        margin: 10px 0;
+        border-left: 4px solid #007bff;
+        transition: all 0.3s ease;
+    }
+    
+    .validation-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    
+    .rule-violation {
+        border-left-color: #dc3545;
+        background-color: #f8d7da;
+    }
+    
+    .rule-confirmation {
+        border-left-color: #28a745;
+        background-color: #d4edda;
+    }
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
 </style>
@@ -1790,6 +1814,336 @@ def display_technical_indicators(indicators, confluence, current_price):
                 for signal in confluence['neutral_signals']:
                     st.markdown(f"- {signal}")
 
+def validate_elliott_wave_rules(pivots, wave_labels=None):
+    """Comprehensive Elliott Wave rule validation system"""
+    
+    if not pivots or len(pivots) < 5:
+        return {
+            'overall_validity': False,
+            'rule_violations': [],
+            'rule_confirmations': [],
+            'guidelines_check': [],
+            'educational_notes': [],
+            'validity_score': 0
+        }
+    
+    validation = {
+        'overall_validity': True,
+        'rule_violations': [],
+        'rule_confirmations': [],
+        'guidelines_check': [],
+        'educational_notes': [],
+        'validity_score': 0
+    }
+    
+    try:
+        # Extract wave data for analysis
+        wave_prices = [pivot['price'] for pivot in pivots]
+        wave_times = [pivot.get('timestamp', i) for i, pivot in enumerate(pivots)]
+        
+        # Assume we're analyzing a 5-wave impulse structure
+        if len(wave_prices) >= 5:
+            wave_0 = wave_prices[0]  # Start
+            wave_1 = wave_prices[1]  # Wave 1 end
+            wave_2 = wave_prices[2]  # Wave 2 end
+            wave_3 = wave_prices[3]  # Wave 3 end
+            wave_4 = wave_prices[4]  # Wave 4 end
+            wave_5 = wave_prices[5] if len(wave_prices) > 5 else None  # Wave 5 end
+            
+            # Calculate wave lengths
+            wave_1_length = abs(wave_1 - wave_0)
+            wave_2_length = abs(wave_2 - wave_1)
+            wave_3_length = abs(wave_3 - wave_2)
+            wave_4_length = abs(wave_4 - wave_3)
+            wave_5_length = abs(wave_5 - wave_4) if wave_5 else None
+            
+            # RULE 1: Wave 3 is never the shortest impulse wave
+            rule1_valid = True
+            if wave_5_length:  # Only check if we have Wave 5
+                if wave_3_length < wave_1_length and wave_3_length < wave_5_length:
+                    rule1_valid = False
+                    validation['rule_violations'].append({
+                        'rule': 'Wave 3 Not Shortest',
+                        'severity': 'critical',
+                        'description': f'Wave 3 ({wave_3_length:.2f}) is shorter than both Wave 1 ({wave_1_length:.2f}) and Wave 5 ({wave_5_length:.2f})',
+                        'explanation': 'Elliott Wave Rule: Wave 3 must never be the shortest impulse wave (1, 3, or 5). This is a fundamental rule that, if broken, invalidates the wave count.',
+                        'suggestion': 'Reconsider wave labeling or look for alternative wave count. Wave 3 is typically the strongest and longest wave.'
+                    })
+            elif wave_3_length < wave_1_length:  # Partial check if Wave 5 not complete
+                validation['guidelines_check'].append({
+                    'guideline': 'Wave 3 Length Concern',
+                    'description': f'Wave 3 ({wave_3_length:.2f}) is shorter than Wave 1 ({wave_1_length:.2f})',
+                    'note': 'Monitor Wave 5 completion - ensure Wave 3 is not the shortest when pattern completes'
+                })
+            
+            if rule1_valid:
+                validation['rule_confirmations'].append({
+                    'rule': 'Wave 3 Not Shortest ✅',
+                    'description': f'Wave 3 ({wave_3_length:.2f}) is properly longer than other impulse waves'
+                })
+            
+            # RULE 2: Wave 4 cannot overlap Wave 1 territory
+            rule2_valid = True
+            # Determine trend direction
+            is_uptrend = wave_1 > wave_0
+            
+            if is_uptrend:
+                # In uptrend: Wave 4 low cannot go below Wave 1 high
+                wave_1_high = max(wave_0, wave_1)
+                wave_4_low = min(wave_3, wave_4)
+                if wave_4_low < wave_1_high:
+                    rule2_valid = False
+                    overlap_amount = wave_1_high - wave_4_low
+                    validation['rule_violations'].append({
+                        'rule': 'Wave 4 Overlap Violation',
+                        'severity': 'critical',
+                        'description': f'Wave 4 low ({wave_4_low:.2f}) overlaps Wave 1 high ({wave_1_high:.2f}) by {overlap_amount:.2f}',
+                        'explanation': 'Elliott Wave Rule: In a 5-wave impulse, Wave 4 cannot enter the price territory of Wave 1. This maintains the impulse wave structure.',
+                        'suggestion': 'This suggests the pattern may be a diagonal (wedge) rather than a standard impulse, or the wave count needs revision.'
+                    })
+            else:
+                # In downtrend: Wave 4 high cannot go above Wave 1 low
+                wave_1_low = min(wave_0, wave_1)
+                wave_4_high = max(wave_3, wave_4)
+                if wave_4_high > wave_1_low:
+                    rule2_valid = False
+                    overlap_amount = wave_4_high - wave_1_low
+                    validation['rule_violations'].append({
+                        'rule': 'Wave 4 Overlap Violation',
+                        'severity': 'critical', 
+                        'description': f'Wave 4 high ({wave_4_high:.2f}) overlaps Wave 1 low ({wave_1_low:.2f}) by {overlap_amount:.2f}',
+                        'explanation': 'Elliott Wave Rule: In a 5-wave impulse, Wave 4 cannot enter the price territory of Wave 1.',
+                        'suggestion': 'Consider diagonal pattern or revise wave count.'
+                    })
+            
+            if rule2_valid:
+                validation['rule_confirmations'].append({
+                    'rule': 'No Wave 4 Overlap ✅',
+                    'description': 'Wave 4 correctly stays out of Wave 1 territory'
+                })
+            
+            # RULE 3: Wave 2 cannot retrace more than 100% of Wave 1
+            rule3_valid = True
+            wave_2_retracement = abs(wave_2 - wave_1) / wave_1_length if wave_1_length > 0 else 0
+            
+            if wave_2_retracement > 1.0:
+                rule3_valid = False
+                validation['rule_violations'].append({
+                    'rule': 'Wave 2 Over-Retracement',
+                    'severity': 'critical',
+                    'description': f'Wave 2 retraces {wave_2_retracement*100:.1f}% of Wave 1 (>100%)',
+                    'explanation': 'Elliott Wave Rule: Wave 2 cannot retrace more than 100% of Wave 1, or it would invalidate the impulse pattern.',
+                    'suggestion': 'Revise wave count - this may be part of a larger corrective structure.'
+                })
+            else:
+                validation['rule_confirmations'].append({
+                    'rule': 'Wave 2 Valid Retracement ✅',
+                    'description': f'Wave 2 retraces {wave_2_retracement*100:.1f}% of Wave 1 (acceptable)'
+                })
+            
+            # GUIDELINE: Fibonacci relationships
+            fib_relationships = []
+            
+            # Wave 3 often extends to 1.618 of Wave 1
+            if wave_1_length > 0:
+                wave_3_ratio = wave_3_length / wave_1_length
+                if 1.5 <= wave_3_ratio <= 1.7:
+                    fib_relationships.append(f'Wave 3 = {wave_3_ratio:.2f} × Wave 1 (near 1.618 extension)')
+                elif 2.5 <= wave_3_ratio <= 2.7:
+                    fib_relationships.append(f'Wave 3 = {wave_3_ratio:.2f} × Wave 1 (near 2.618 extension)')
+            
+            # Wave 5 often equals Wave 1 or relates by Fibonacci
+            if wave_5_length and wave_1_length > 0:
+                wave_5_ratio = wave_5_length / wave_1_length
+                if 0.9 <= wave_5_ratio <= 1.1:
+                    fib_relationships.append(f'Wave 5 ≈ Wave 1 (ratio: {wave_5_ratio:.2f})')
+                elif 0.6 <= wave_5_ratio <= 0.65:
+                    fib_relationships.append(f'Wave 5 = {wave_5_ratio:.2f} × Wave 1 (near 0.618)')
+            
+            # Wave 2 and 4 retracement guidelines
+            if wave_2_retracement > 0:
+                if 0.5 <= wave_2_retracement <= 0.65:
+                    fib_relationships.append(f'Wave 2 retraces {wave_2_retracement*100:.1f}% (healthy 50-61.8%)')
+                elif wave_2_retracement > 0.8:
+                    validation['guidelines_check'].append({
+                        'guideline': 'Deep Wave 2 Retracement',
+                        'description': f'Wave 2 retraces {wave_2_retracement*100:.1f}% (>80% is deep)',
+                        'note': 'Deep retracements are valid but suggest strong correction'
+                    })
+            
+            if fib_relationships:
+                validation['guidelines_check'].extend([{
+                    'guideline': 'Fibonacci Relationships',
+                    'description': rel,
+                    'note': 'Strong Fibonacci relationships increase pattern validity'
+                } for rel in fib_relationships])
+            
+            # GUIDELINE: Alternation principle
+            # Wave 2 and Wave 4 should alternate in form
+            wave_2_type = 'sharp' if wave_2_retracement > 0.618 else 'sideways'
+            
+            if len(wave_times) >= 5:
+                wave_2_time = abs(wave_times[2] - wave_times[1]) if len(wave_times) > 2 else 1
+                wave_4_time = abs(wave_times[4] - wave_times[3]) if len(wave_times) > 4 else 1
+                
+                wave_4_retracement = abs(wave_4 - wave_3) / wave_3_length if wave_3_length > 0 else 0
+                wave_4_type = 'sharp' if wave_4_retracement > 0.618 else 'sideways'
+                
+                if wave_2_type != wave_4_type:
+                    validation['guidelines_check'].append({
+                        'guideline': 'Alternation Principle ✅',
+                        'description': f'Wave 2 is {wave_2_type}, Wave 4 is {wave_4_type} (alternating forms)',
+                        'note': 'Alternation strengthens the wave count validity'
+                    })
+                else:
+                    validation['guidelines_check'].append({
+                        'guideline': 'Alternation Concern',
+                        'description': f'Both Wave 2 and Wave 4 appear {wave_2_type}',
+                        'note': 'Lack of alternation weakens the pattern (guideline, not rule)'
+                    })
+            
+            # Calculate overall validity score
+            critical_violations = len([v for v in validation['rule_violations'] if v.get('severity') == 'critical'])
+            confirmations = len(validation['rule_confirmations'])
+            guidelines_met = len([g for g in validation['guidelines_check'] if '✅' in g.get('description', '')])
+            
+            if critical_violations > 0:
+                validation['overall_validity'] = False
+                validation['validity_score'] = max(0, 30 - (critical_violations * 20))
+            else:
+                validation['validity_score'] = min(100, 70 + (confirmations * 10) + (guidelines_met * 5))
+                validation['overall_validity'] = validation['validity_score'] >= 60
+            
+            # Educational notes
+            validation['educational_notes'] = [
+                "🎓 Elliott Wave Rules vs Guidelines: Rules are absolute and cannot be violated. Guidelines are preferences that increase pattern reliability.",
+                "📚 The three cardinal rules: (1) Wave 3 never shortest, (2) Wave 4 doesn't overlap Wave 1, (3) Wave 2 doesn't exceed 100% retracement.",
+                "🔍 Alternation Principle: Wave 2 and Wave 4 should differ in form - if one is sharp, the other should be sideways/complex.",
+                "📊 Fibonacci relationships are common but not required - they add confidence when present.",
+                "⚡ Diagonal patterns (wedges) have different rules - Wave 4 can overlap Wave 1 in diagonals."
+            ]
+        
+        else:
+            validation['educational_notes'].append("📊 Need at least 5 pivot points to perform comprehensive Elliott Wave rule validation")
+            validation['validity_score'] = 20
+    
+    except Exception as e:
+        st.error(f"Error in Elliott Wave validation: {str(e)}")
+        validation['overall_validity'] = False
+        validation['validity_score'] = 0
+    
+    return validation
+
+def display_wave_validation(validation_results):
+    """Display Elliott Wave rule validation results"""
+    
+    if not validation_results:
+        st.info("💡 Wave validation requires sufficient wave data")
+        return
+    
+    st.markdown("### ⚖️ **Elliott Wave Rule Validation**")
+    
+    # Overall Validity Score
+    validity_score = validation_results.get('validity_score', 0)
+    is_valid = validation_results.get('overall_validity', False)
+    
+    score_color = '#28a745' if validity_score >= 80 else '#ffc107' if validity_score >= 60 else '#dc3545'
+    validity_text = 'Valid' if is_valid else 'Invalid'
+    
+    if validity_score >= 80:
+        grade_text = 'Excellent'
+        grade_icon = '🏆'
+    elif validity_score >= 60:
+        grade_text = 'Good'
+        grade_icon = '✅'
+    elif validity_score >= 40:
+        grade_text = 'Fair'  
+        grade_icon = '⚠️'
+    else:
+        grade_text = 'Poor'
+        grade_icon = '❌'
+    
+    st.markdown(f"""
+    <div class="price-card" style="background: linear-gradient(135deg, {score_color}22, {score_color}11); border: 3px solid {score_color}; text-align: center;">
+        <h3 style="color: {score_color}; margin-bottom: 10px;">Wave Count Validity</h3>
+        <h1 style="color: #212529; margin: 10px 0; font-size: 2.5em;">{grade_icon} {validity_score:.0f}%</h1>
+        <h4 style="color: {score_color}; margin: 0;">{validity_text} - {grade_text}</h4>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Rule Violations (Critical Issues)
+    if validation_results.get('rule_violations'):
+        st.markdown("#### 🚨 **Critical Rule Violations**")
+        
+        for violation in validation_results['rule_violations']:
+            severity_color = '#dc3545' if violation.get('severity') == 'critical' else '#ffc107'
+            
+            with st.expander(f"❌ {violation['rule']}", expanded=True):
+                st.markdown(f"""
+                <div class="price-card" style="border: 2px solid {severity_color}; background-color: {severity_color}22;">
+                    <h4 style="color: {severity_color}; margin-bottom: 10px;">⚠️ {violation['rule']}</h4>
+                    <p style="margin-bottom: 10px;"><strong>Issue:</strong> {violation['description']}</p>
+                    <p style="margin-bottom: 10px;"><strong>Explanation:</strong> {violation['explanation']}</p>
+                    <p style="margin: 0;"><strong>Suggestion:</strong> {violation['suggestion']}</p>
+                </div>
+                """, unsafe_allow_html=True)
+    
+    # Rule Confirmations
+    if validation_results.get('rule_confirmations'):
+        st.markdown("#### ✅ **Rule Confirmations**")
+        
+        for confirmation in validation_results['rule_confirmations']:
+            st.markdown(f"""
+            <div class="price-card" style="border-left: 4px solid #28a745; background-color: #d4edda;">
+                <h5 style="color: #155724; margin-bottom: 5px;">{confirmation['rule']}</h5>
+                <p style="color: #155724; margin: 0;">{confirmation['description']}</p>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    # Guidelines Check
+    if validation_results.get('guidelines_check'):
+        st.markdown("#### 📋 **Guidelines Assessment**")
+        
+        col1, col2 = st.columns(2)
+        
+        positive_guidelines = [g for g in validation_results['guidelines_check'] if '✅' in g.get('description', '')]
+        concerns = [g for g in validation_results['guidelines_check'] if '✅' not in g.get('description', '')]
+        
+        with col1:
+            if positive_guidelines:
+                st.markdown("##### 💪 **Strengths**")
+                for guideline in positive_guidelines:
+                    st.markdown(f"""
+                    <div class="price-card" style="border-left: 3px solid #28a745; padding: 10px; margin: 5px 0;">
+                        <strong>{guideline['guideline']}</strong><br>
+                        <small>{guideline['description']}</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+        
+        with col2:
+            if concerns:
+                st.markdown("##### ⚠️ **Areas of Concern**")
+                for concern in concerns:
+                    st.markdown(f"""
+                    <div class="price-card" style="border-left: 3px solid #ffc107; padding: 10px; margin: 5px 0;">
+                        <strong>{concern['guideline']}</strong><br>
+                        <small>{concern['description']}</small><br>
+                        <em style="color: #6c757d;">{concern.get('note', '')}</em>
+                    </div>
+                    """, unsafe_allow_html=True)
+    
+    # Educational Notes
+    if validation_results.get('educational_notes'):
+        with st.expander("📚 **Educational Notes - Elliott Wave Theory**", expanded=False):
+            for note in validation_results['educational_notes']:
+                st.markdown(f"- {note}")
+            
+            st.markdown("---")
+            st.markdown("**Additional Resources:**")
+            st.markdown("- Elliott Wave Principle by Frost & Prechter (definitive guide)")
+            st.markdown("- Elliott Wave rules are universal and apply to all timeframes")
+            st.markdown("- Guidelines increase probability but are not absolute requirements")
+
 def create_multi_timeframe_analysis(ticker, timeframes=['daily', '4h', '1h']):
     """Create multi-timeframe Elliott Wave analysis"""
     
@@ -2521,6 +2875,65 @@ def main():
                                 st.info("💡 Unable to calculate technical indicators with current data")
                     else:
                         st.info("💡 Technical indicators require at least 50 data points for accurate analysis")
+                
+                # Elliott Wave Rule Validation Section
+                st.markdown("---")
+                with st.expander("⚖️ **Elliott Wave Rule Validation**", expanded=False):
+                    pivots = analysis.get('zigzag_pivots', [])
+                    
+                    if pivots and len(pivots) >= 3:
+                        with st.spinner("Validating Elliott Wave rules and guidelines..."):
+                            # Get wave labels if available
+                            primary_count = analysis.get('primary_count', {})
+                            wave_labels = primary_count.get('labels', []) if hasattr(primary_count, 'get') else None
+                            
+                            # Validate Elliott Wave rules
+                            validation_results = validate_elliott_wave_rules(pivots, wave_labels)
+                        
+                        if validation_results:
+                            display_wave_validation(validation_results)
+                            
+                            # Add actionable insights based on validation
+                            validity_score = validation_results.get('validity_score', 0)
+                            is_valid = validation_results.get('overall_validity', False)
+                            
+                            st.markdown("#### 🎯 **Validation Summary & Trading Implications**")
+                            
+                            if is_valid and validity_score >= 80:
+                                st.success(f"✅ **Excellent Wave Count** ({validity_score}%) - This Elliott Wave pattern meets all major rules and guidelines. High confidence for trading decisions.")
+                            elif is_valid and validity_score >= 60:
+                                st.warning(f"✅ **Valid Wave Count** ({validity_score}%) - Pattern is valid but consider additional confirmation before major positions.")
+                            else:
+                                st.error(f"❌ **Invalid Wave Count** ({validity_score}%) - Critical rule violations detected. Avoid trading this pattern or seek alternative wave counts.")
+                            
+                            # Trading recommendations based on validation
+                            violations = validation_results.get('rule_violations', [])
+                            if violations:
+                                st.markdown("**🚨 Trading Recommendations:**")
+                                st.markdown("- ❌ **Do not trade** this wave count due to rule violations")
+                                st.markdown("- 🔍 **Reassess** wave labeling or look for alternative counts")
+                                st.markdown("- ⏳ **Wait** for pattern completion or confirmation")
+                                st.markdown("- 📚 **Study** Elliott Wave theory for proper pattern recognition")
+                            else:
+                                confirmations = validation_results.get('rule_confirmations', [])
+                                guidelines_met = len([g for g in validation_results.get('guidelines_check', []) if '✅' in g.get('description', '')])
+                                
+                                st.markdown("**✅ Trading Recommendations:**")
+                                if len(confirmations) >= 3 and guidelines_met >= 2:
+                                    st.markdown("- 🎯 **High-confidence setup** - All major rules confirmed")
+                                    st.markdown("- 💰 **Consider standard position sizing** with proper risk management")
+                                    st.markdown("- 📈 **Monitor for entry signals** at Fibonacci levels")
+                                elif len(confirmations) >= 2:
+                                    st.markdown("- ✅ **Good setup** - Major rules confirmed")
+                                    st.markdown("- ⚖️ **Use conservative position sizing**")
+                                    st.markdown("- 🔍 **Seek additional confirmation** before entry")
+                                else:
+                                    st.markdown("- ⚠️ **Proceed with caution** - Limited rule confirmation")
+                                    st.markdown("- 📊 **Consider paper trading** first")
+                                    st.markdown("- 🔍 **Wait for clearer signals**")
+                    else:
+                        st.info("💡 Elliott Wave rule validation requires at least 3 pivot points (minimum wave structure)")
+            
             
             
             
