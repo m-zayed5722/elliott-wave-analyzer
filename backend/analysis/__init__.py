@@ -1,0 +1,1 @@
+# Analysis module for Elliott Wave detection
