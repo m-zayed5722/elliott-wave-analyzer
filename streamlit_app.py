@@ -120,6 +120,77 @@ st.markdown("""
         border-left-color: #28a745;
         background-color: #d4edda;
     }
+    
+    /* Market Sentiment Dashboard styling */
+    .sentiment-gauge {
+        background: linear-gradient(45deg, #1f1f1f, #2f2f2f);
+        border-radius: 15px;
+        padding: 20px;
+        text-align: center;
+        margin: 15px 0;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        transition: all 0.3s ease;
+    }
+    
+    .sentiment-gauge:hover {
+        transform: scale(1.02);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+    }
+    
+    .sentiment-component {
+        background: #1e1e1e;
+        border-radius: 10px;
+        padding: 15px;
+        margin: 10px 0;
+        transition: all 0.3s ease;
+    }
+    
+    .sentiment-component:hover {
+        background: #262626;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    
+    .fear-greed-extreme-fear {
+        border-left: 5px solid #ff4757;
+    }
+    
+    .fear-greed-fear {
+        border-left: 5px solid #ff6b6b;
+    }
+    
+    .fear-greed-neutral {
+        border-left: 5px solid #74b9ff;
+    }
+    
+    .fear-greed-greed {
+        border-left: 5px solid #00cec9;
+    }
+    
+    .fear-greed-extreme-greed {
+        border-left: 5px solid #00b894;
+    }
+    
+    .integration-card {
+        background: #1e1e1e;
+        border-radius: 10px;
+        padding: 20px;
+        margin: 15px 0;
+        transition: all 0.3s ease;
+    }
+    
+    .integration-card:hover {
+        background: #262626;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    
+    .confidence-adjusted {
+        text-align: center;
+        padding: 15px;
+        background: #2e2e2e;
+        border-radius: 10px;
+        margin: 10px 0;
+    }
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
 </style>
@@ -2933,6 +3004,24 @@ def main():
                                     st.markdown("- 🔍 **Wait for clearer signals**")
                     else:
                         st.info("💡 Elliott Wave rule validation requires at least 3 pivot points (minimum wave structure)")
+                
+                # Market Sentiment Dashboard Section
+                st.markdown("---")
+                with st.expander("🧠 **Market Sentiment Dashboard**", expanded=False):
+                    with st.spinner(f"Analyzing market sentiment for {ticker}..."):
+                        sentiment_data = calculate_market_sentiment(ticker, period_days=30)
+                        display_market_sentiment(sentiment_data, ticker)
+                
+                # Sentiment-Wave Integration Section
+                st.markdown("---") 
+                with st.expander("🔗 **Sentiment-Wave Integration**", expanded=False):
+                    with st.spinner("Integrating sentiment with Elliott Wave analysis..."):
+                        sentiment_data = calculate_market_sentiment(ticker, period_days=30)
+                        integration = integrate_sentiment_with_waves(analysis, sentiment_data, ticker)
+                        if integration:
+                            display_sentiment_wave_integration(integration, ticker)
+                        else:
+                            st.info("💡 Integration analysis requires both wave and sentiment data")
             
             
             
@@ -3254,6 +3343,610 @@ def main():
         "*Built with Streamlit • Powered by Yahoo Finance • "
         f"[View Source Code](https://github.com/{github_user}/elliott-wave-analyzer)*"
     )
+
+def calculate_market_sentiment(symbol, period_days=30):
+    """
+    Calculate comprehensive market sentiment indicators
+    Includes Fear & Greed components, VIX analysis, and custom sentiment scoring
+    """
+    try:
+        sentiment_data = {
+            'overall_sentiment': 'Neutral',
+            'sentiment_score': 50,  # 0-100 scale
+            'fear_greed_components': {},
+            'vix_analysis': {},
+            'market_breadth': {},
+            'sentiment_history': [],
+            'recommendations': []
+        }
+        
+        # Get VIX data for fear/greed analysis
+        try:
+            vix_ticker = yf.Ticker("^VIX")
+            vix_data = vix_ticker.history(period=f"{period_days}d")
+            
+            if not vix_data.empty:
+                current_vix = vix_data['Close'].iloc[-1]
+                vix_avg = vix_data['Close'].mean()
+                vix_std = vix_data['Close'].std()
+                
+                # VIX analysis
+                if current_vix > 30:
+                    vix_sentiment = "Extreme Fear"
+                    vix_score = 10
+                elif current_vix > 20:
+                    vix_sentiment = "Fear"
+                    vix_score = 25
+                elif current_vix < 12:
+                    vix_sentiment = "Extreme Greed"
+                    vix_score = 90
+                elif current_vix < 16:
+                    vix_sentiment = "Greed"
+                    vix_score = 75
+                else:
+                    vix_sentiment = "Neutral"
+                    vix_score = 50
+                
+                sentiment_data['vix_analysis'] = {
+                    'current_vix': current_vix,
+                    'average_vix': vix_avg,
+                    'vix_percentile': ((current_vix - vix_data['Close'].min()) / 
+                                     (vix_data['Close'].max() - vix_data['Close'].min())) * 100,
+                    'sentiment': vix_sentiment,
+                    'score': vix_score,
+                    'interpretation': f"VIX at {current_vix:.2f} indicates {vix_sentiment.lower()}"
+                }
+        except:
+            sentiment_data['vix_analysis'] = {
+                'current_vix': None,
+                'sentiment': 'Unknown',
+                'score': 50,
+                'interpretation': 'VIX data unavailable'
+            }
+        
+        # Get stock data for additional sentiment analysis
+        try:
+            stock = yf.Ticker(symbol)
+            stock_data = stock.history(period=f"{period_days}d")
+            
+            if not stock_data.empty:
+                # Price momentum analysis
+                returns = stock_data['Close'].pct_change().dropna()
+                positive_days = (returns > 0).sum()
+                total_days = len(returns)
+                positive_ratio = positive_days / total_days if total_days > 0 else 0.5
+                
+                # Volatility analysis
+                volatility = returns.std() * (252 ** 0.5)  # Annualized volatility
+                
+                # Volume analysis
+                avg_volume = stock_data['Volume'].mean()
+                recent_volume = stock_data['Volume'].tail(5).mean()
+                volume_ratio = recent_volume / avg_volume if avg_volume > 0 else 1
+                
+                # RSI-based sentiment
+                def calculate_rsi(prices, period=14):
+                    delta = prices.diff()
+                    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+                    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+                    rs = gain / loss
+                    rsi = 100 - (100 / (1 + rs))
+                    return rsi.iloc[-1] if not rsi.empty else 50
+                
+                rsi = calculate_rsi(stock_data['Close'])
+                
+                # Fear & Greed components
+                sentiment_data['fear_greed_components'] = {
+                    'price_momentum': {
+                        'value': positive_ratio * 100,
+                        'score': positive_ratio * 100,
+                        'interpretation': f"{positive_ratio*100:.1f}% positive days in last {period_days} days"
+                    },
+                    'price_strength': {
+                        'value': rsi,
+                        'score': rsi,
+                        'interpretation': f"RSI at {rsi:.1f} - {'Overbought' if rsi > 70 else 'Oversold' if rsi < 30 else 'Neutral'}"
+                    },
+                    'volatility': {
+                        'value': volatility * 100,
+                        'score': max(0, min(100, 100 - volatility * 200)),  # Lower volatility = higher score
+                        'interpretation': f"Annualized volatility: {volatility*100:.1f}%"
+                    },
+                    'volume': {
+                        'value': volume_ratio,
+                        'score': min(100, volume_ratio * 50),
+                        'interpretation': f"Recent volume {volume_ratio:.1f}x average"
+                    }
+                }
+        except:
+            sentiment_data['fear_greed_components'] = {
+                'price_momentum': {'value': 50, 'score': 50, 'interpretation': 'Data unavailable'},
+                'price_strength': {'value': 50, 'score': 50, 'interpretation': 'Data unavailable'},
+                'volatility': {'value': 20, 'score': 50, 'interpretation': 'Data unavailable'},
+                'volume': {'value': 1, 'score': 50, 'interpretation': 'Data unavailable'}
+            }
+        
+        # Market breadth indicators (simplified)
+        try:
+            # Get major indices for breadth analysis
+            indices_data = {}
+            for index_symbol in ['^GSPC', '^DJI', '^IXIC']:  # S&P 500, Dow, NASDAQ
+                try:
+                    index_ticker = yf.Ticker(index_symbol)
+                    index_hist = index_ticker.history(period="5d")
+                    if not index_hist.empty:
+                        daily_change = ((index_hist['Close'].iloc[-1] / index_hist['Close'].iloc[0]) - 1) * 100
+                        indices_data[index_symbol] = daily_change
+                except:
+                    continue
+            
+            if indices_data:
+                avg_index_performance = sum(indices_data.values()) / len(indices_data)
+                breadth_score = min(100, max(0, 50 + avg_index_performance * 10))
+                
+                sentiment_data['market_breadth'] = {
+                    'indices_performance': indices_data,
+                    'average_performance': avg_index_performance,
+                    'breadth_score': breadth_score,
+                    'interpretation': f"Major indices average: {avg_index_performance:.1f}%"
+                }
+        except:
+            sentiment_data['market_breadth'] = {
+                'breadth_score': 50,
+                'interpretation': 'Market breadth data unavailable'
+            }
+        
+        # Calculate overall sentiment score
+        component_scores = []
+        
+        # VIX weight: 30%
+        if sentiment_data['vix_analysis'].get('score'):
+            component_scores.append(sentiment_data['vix_analysis']['score'] * 0.3)
+        
+        # Fear & Greed components weight: 50%
+        fg_scores = []
+        for component in sentiment_data['fear_greed_components'].values():
+            fg_scores.append(component['score'])
+        if fg_scores:
+            avg_fg_score = sum(fg_scores) / len(fg_scores)
+            component_scores.append(avg_fg_score * 0.5)
+        
+        # Market breadth weight: 20%
+        if sentiment_data['market_breadth'].get('breadth_score'):
+            component_scores.append(sentiment_data['market_breadth']['breadth_score'] * 0.2)
+        
+        if component_scores:
+            sentiment_data['sentiment_score'] = sum(component_scores)
+        else:
+            sentiment_data['sentiment_score'] = 50
+        
+        # Determine overall sentiment
+        score = sentiment_data['sentiment_score']
+        if score >= 80:
+            sentiment_data['overall_sentiment'] = "Extreme Greed"
+        elif score >= 60:
+            sentiment_data['overall_sentiment'] = "Greed"
+        elif score >= 40:
+            sentiment_data['overall_sentiment'] = "Neutral"
+        elif score >= 20:
+            sentiment_data['overall_sentiment'] = "Fear"
+        else:
+            sentiment_data['overall_sentiment'] = "Extreme Fear"
+        
+        # Generate recommendations
+        if score >= 75:
+            sentiment_data['recommendations'] = [
+                "🔴 Extreme greed detected - consider taking profits",
+                "⚠️ Market may be overextended - watch for reversal signals",
+                "📈 If trend is strong, consider trailing stops"
+            ]
+        elif score >= 55:
+            sentiment_data['recommendations'] = [
+                "🟡 Moderate optimism - normal market conditions",
+                "✅ Good environment for trend-following strategies",
+                "📊 Monitor key support/resistance levels"
+            ]
+        elif score <= 25:
+            sentiment_data['recommendations'] = [
+                "🟢 Extreme fear detected - potential buying opportunity",
+                "💡 Contrarian investors may find value here",
+                "⏳ Wait for confirmation signals before entering"
+            ]
+        else:
+            sentiment_data['recommendations'] = [
+                "🔵 Fear present - market may find support soon",
+                "🎯 Look for oversold bounce opportunities",
+                "📉 Defensive positioning may be appropriate"
+            ]
+        
+        return sentiment_data
+        
+    except Exception as e:
+        return {
+            'overall_sentiment': 'Error',
+            'sentiment_score': 50,
+            'error': str(e),
+            'fear_greed_components': {},
+            'vix_analysis': {},
+            'market_breadth': {},
+            'recommendations': ['Error calculating sentiment data']
+        }
+
+def display_market_sentiment(sentiment_data, symbol):
+    """Display comprehensive market sentiment dashboard"""
+    
+    if not sentiment_data or sentiment_data.get('error'):
+        st.error(f"Error loading sentiment data: {sentiment_data.get('error', 'Unknown error')}")
+        return
+    
+    st.markdown("### 🧠 **Market Sentiment Dashboard**")
+    
+    # Overall sentiment gauge
+    col1, col2, col3 = st.columns([2, 1, 2])
+    
+    with col2:
+        score = sentiment_data['sentiment_score']
+        sentiment = sentiment_data['overall_sentiment']
+        
+        # Create sentiment gauge
+        if score >= 80:
+            gauge_color = "red"
+            gauge_emoji = "🔥"
+        elif score >= 60:
+            gauge_color = "orange" 
+            gauge_emoji = "📈"
+        elif score >= 40:
+            gauge_color = "blue"
+            gauge_emoji = "😐"
+        elif score >= 20:
+            gauge_color = "purple"
+            gauge_emoji = "📉"
+        else:
+            gauge_color = "green"
+            gauge_emoji = "❄️"
+        
+        st.markdown(f"""
+        <div style="text-align: center; padding: 20px; background: linear-gradient(45deg, #1f1f1f, #2f2f2f); 
+                    border-radius: 15px; border: 2px solid {gauge_color};">
+            <h2 style="color: {gauge_color}; margin: 0;">{gauge_emoji} {sentiment}</h2>
+            <h1 style="color: {gauge_color}; margin: 10px 0; font-size: 3em;">{score:.0f}</h1>
+            <p style="color: #888; margin: 0;">Sentiment Score (0-100)</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Fear & Greed Components
+    if sentiment_data.get('fear_greed_components'):
+        st.markdown("#### 📊 **Fear & Greed Components**")
+        
+        components = sentiment_data['fear_greed_components']
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if 'price_momentum' in components:
+                momentum = components['price_momentum']
+                st.markdown(f"""
+                <div style="padding: 15px; background: #1e1e1e; border-radius: 10px; border-left: 4px solid #00ff41;">
+                    <h5 style="color: #00ff41; margin: 0;">📈 Price Momentum</h5>
+                    <h3 style="color: white; margin: 10px 0;">{momentum['score']:.1f}/100</h3>
+                    <p style="color: #888; margin: 0; font-size: 0.9em;">{momentum['interpretation']}</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            if 'volatility' in components:
+                volatility = components['volatility']
+                st.markdown(f"""
+                <div style="padding: 15px; background: #1e1e1e; border-radius: 10px; border-left: 4px solid #ff6b6b; margin-top: 10px;">
+                    <h5 style="color: #ff6b6b; margin: 0;">⚡ Volatility</h5>
+                    <h3 style="color: white; margin: 10px 0;">{volatility['score']:.1f}/100</h3>
+                    <p style="color: #888; margin: 0; font-size: 0.9em;">{volatility['interpretation']}</p>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        with col2:
+            if 'price_strength' in components:
+                strength = components['price_strength']
+                st.markdown(f"""
+                <div style="padding: 15px; background: #1e1e1e; border-radius: 10px; border-left: 4px solid #4ecdc4;">
+                    <h5 style="color: #4ecdc4; margin: 0;">💪 Price Strength (RSI)</h5>
+                    <h3 style="color: white; margin: 10px 0;">{strength['score']:.1f}/100</h3>
+                    <p style="color: #888; margin: 0; font-size: 0.9em;">{strength['interpretation']}</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            if 'volume' in components:
+                volume = components['volume']
+                st.markdown(f"""
+                <div style="padding: 15px; background: #1e1e1e; border-radius: 10px; border-left: 4px solid #ffd93d; margin-top: 10px;">
+                    <h5 style="color: #ffd93d; margin: 0;">📊 Volume Activity</h5>
+                    <h3 style="color: white; margin: 10px 0;">{volume['score']:.1f}/100</h3>
+                    <p style="color: #888; margin: 0; font-size: 0.9em;">{volume['interpretation']}</p>
+                </div>
+                """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # VIX Analysis & Market Breadth
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if sentiment_data.get('vix_analysis'):
+            vix = sentiment_data['vix_analysis']
+            st.markdown("#### 😨 **VIX Fear Index**")
+            
+            vix_color = "green" if vix.get('current_vix', 20) > 25 else "red" if vix.get('current_vix', 20) < 15 else "orange"
+            
+            st.markdown(f"""
+            <div style="padding: 20px; background: #1e1e1e; border-radius: 10px; border: 2px solid {vix_color};">
+                <h3 style="color: {vix_color}; margin: 0;">Current VIX: {vix.get('current_vix', 'N/A'):.2f if vix.get('current_vix') else 'N/A'}</h3>
+                <p style="color: white; margin: 10px 0;">Status: {vix.get('sentiment', 'Unknown')}</p>
+                <p style="color: #888; margin: 0; font-size: 0.9em;">{vix.get('interpretation', 'No data')}</p>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    with col2:
+        if sentiment_data.get('market_breadth'):
+            breadth = sentiment_data['market_breadth']
+            st.markdown("#### 📊 **Market Breadth**")
+            
+            breadth_color = "green" if breadth.get('breadth_score', 50) > 60 else "red" if breadth.get('breadth_score', 50) < 40 else "orange"
+            
+            st.markdown(f"""
+            <div style="padding: 20px; background: #1e1e1e; border-radius: 10px; border: 2px solid {breadth_color};">
+                <h3 style="color: {breadth_color}; margin: 0;">Breadth Score: {breadth.get('breadth_score', 50):.1f}</h3>
+                <p style="color: white; margin: 10px 0;">Market Health</p>
+                <p style="color: #888; margin: 0; font-size: 0.9em;">{breadth.get('interpretation', 'No data')}</p>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Sentiment-based Recommendations
+    if sentiment_data.get('recommendations'):
+        st.markdown("#### 💡 **Market Psychology Insights**")
+        
+        for recommendation in sentiment_data['recommendations']:
+            st.markdown(f"• {recommendation}")
+    
+    # Educational content
+    st.markdown("---")
+    st.markdown("#### 📚 **Understanding Market Sentiment**")
+    
+    with st.expander("📖 Learn About Market Sentiment Indicators"):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("""
+            **Fear & Greed Components:**
+            - **Price Momentum**: Percentage of positive vs negative days
+            - **Price Strength**: RSI indicator showing overbought/oversold conditions
+            - **Volatility**: Market stability measured by price fluctuations
+            - **Volume**: Trading activity compared to historical averages
+            """)
+        
+        with col2:
+            st.markdown("""
+            **Key Indicators:**
+            - **VIX (Fear Index)**: Measures market fear and uncertainty
+            - **Market Breadth**: Performance across major market indices  
+            - **Sentiment Score**: Composite 0-100 scale of market psychology
+            - **Contrarian Signals**: Extreme readings often signal reversals
+            """)
+        
+        st.markdown("""
+        **💡 Trading with Sentiment:**
+        - **Extreme Fear (0-25)**: Often presents buying opportunities for contrarian traders
+        - **Fear (25-40)**: Market may find support, look for oversold bounces
+        - **Neutral (40-60)**: Balanced conditions, trend-following strategies work well
+        - **Greed (60-80)**: Caution advised, market may be overextended
+        - **Extreme Greed (80-100)**: Consider profit-taking, watch for reversal signals
+        
+        ⚠️ **Important**: Sentiment analysis works best when combined with technical analysis and Elliott Wave patterns. 
+        Extreme sentiment readings can persist longer than expected in strong trends.
+        """)
+
+def integrate_sentiment_with_waves(analysis, sentiment_data, ticker):
+    """
+    Integrate market sentiment analysis with Elliott Wave patterns
+    Provide sentiment-enhanced trading recommendations
+    """
+    if not sentiment_data or not analysis:
+        return None
+    
+    integration = {
+        'sentiment_score': sentiment_data.get('sentiment_score', 50),
+        'sentiment_label': sentiment_data.get('overall_sentiment', 'Neutral'),
+        'wave_sentiment_alignment': {},
+        'enhanced_recommendations': [],
+        'risk_adjustments': [],
+        'timing_insights': []
+    }
+    
+    # Get current wave analysis
+    primary_count = analysis.get('primary_count', {})
+    current_wave = primary_count.get('current_wave', 'Unknown')
+    wave_confidence = analysis.get('confidence_metrics', {}).get('overall_confidence', 0)
+    
+    score = integration['sentiment_score']
+    sentiment = integration['sentiment_label']
+    
+    # Analyze sentiment-wave alignment
+    if "1" in str(current_wave) or "3" in str(current_wave) or "5" in str(current_wave):
+        # Impulse waves - bullish waves
+        if score >= 60:  # Greed/Extreme Greed
+            integration['wave_sentiment_alignment'] = {
+                'status': 'ALIGNED',
+                'strength': 'Strong',
+                'description': f"Bullish sentiment ({sentiment}) aligns with impulse Wave {current_wave}",
+                'confidence_boost': 15
+            }
+            integration['enhanced_recommendations'].extend([
+                f"🟢 Sentiment-Wave ALIGNMENT: {sentiment} supports Wave {current_wave} development",
+                "💪 Strong psychological backing for continued upward movement",
+                "📈 Consider standard position sizing - sentiment supports trend"
+            ])
+        elif score <= 40:  # Fear/Extreme Fear
+            integration['wave_sentiment_alignment'] = {
+                'status': 'CONTRARIAN',
+                'strength': 'Moderate',
+                'description': f"Bearish sentiment ({sentiment}) during Wave {current_wave} may signal opportunity",
+                'confidence_boost': 10
+            }
+            integration['enhanced_recommendations'].extend([
+                f"🟡 CONTRARIAN SIGNAL: {sentiment} during Wave {current_wave} may create opportunity",
+                "🎯 Oversold conditions could fuel next impulse move",
+                "⚖️ Consider smaller position sizes until sentiment improves"
+            ])
+        else:
+            integration['wave_sentiment_alignment'] = {
+                'status': 'NEUTRAL',
+                'strength': 'Moderate',
+                'description': f"Neutral sentiment during Wave {current_wave}",
+                'confidence_boost': 5
+            }
+    
+    elif "2" in str(current_wave) or "4" in str(current_wave):
+        # Corrective waves - expect pullbacks
+        if score <= 40:  # Fear/Extreme Fear
+            integration['wave_sentiment_alignment'] = {
+                'status': 'ALIGNED',
+                'strength': 'Strong', 
+                'description': f"Bearish sentiment ({sentiment}) aligns with corrective Wave {current_wave}",
+                'confidence_boost': 15
+            }
+            integration['enhanced_recommendations'].extend([
+                f"🔴 Sentiment-Wave ALIGNMENT: {sentiment} confirms Wave {current_wave} correction",
+                "📉 Psychology supports the expected pullback/correction",
+                "🎯 Ideal conditions to prepare for next impulse wave entry"
+            ])
+        elif score >= 60:  # Greed/Extreme Greed
+            integration['wave_sentiment_alignment'] = {
+                'status': 'DIVERGENCE',
+                'strength': 'Warning',
+                'description': f"Bullish sentiment ({sentiment}) conflicts with corrective Wave {current_wave}",
+                'confidence_boost': -10
+            }
+            integration['enhanced_recommendations'].extend([
+                f"⚠️ SENTIMENT DIVERGENCE: {sentiment} conflicts with Wave {current_wave} correction",
+                "🔍 Market may not correct as expected - watch for truncation or extension",
+                "🛡️ Use smaller position sizes due to sentiment-wave mismatch"
+            ])
+        else:
+            integration['wave_sentiment_alignment'] = {
+                'status': 'NEUTRAL',
+                'strength': 'Moderate',
+                'description': f"Neutral sentiment during Wave {current_wave} correction",
+                'confidence_boost': 5
+            }
+    
+    # VIX-specific insights
+    vix_analysis = sentiment_data.get('vix_analysis', {})
+    current_vix = vix_analysis.get('current_vix')
+    if current_vix:
+        if current_vix > 30:
+            integration['timing_insights'].append("🔥 Extreme VIX spike - Often marks major turning points")
+            integration['timing_insights'].append("💡 High volatility favors breakout/breakdown scenarios")
+        elif current_vix < 12:
+            integration['timing_insights'].append("😴 Very low VIX - Market complacency, potential for surprise moves")
+            integration['timing_insights'].append("⚠️ Low volatility may precede significant price action")
+    
+    # Risk adjustments based on sentiment
+    if score >= 80 or score <= 20:  # Extreme readings
+        integration['risk_adjustments'].append("🎯 EXTREME SENTIMENT: Reduce position sizes by 30-50%")
+        integration['risk_adjustments'].append("⏰ Extreme readings often precede reversals - be prepared")
+        integration['risk_adjustments'].append("🔍 Watch for divergences between price and sentiment")
+    elif score >= 70 or score <= 30:  # High readings
+        integration['risk_adjustments'].append("⚖️ HIGH SENTIMENT: Consider reducing position sizes by 20%")
+        integration['risk_adjustments'].append("📊 Monitor closely for shifts in market psychology")
+    
+    # Enhanced recommendations based on combined analysis
+    confidence_adjustment = integration['wave_sentiment_alignment'].get('confidence_boost', 0)
+    adjusted_confidence = max(0, min(100, wave_confidence + confidence_adjustment))
+    
+    integration['adjusted_confidence'] = adjusted_confidence
+    
+    if adjusted_confidence >= 80:
+        integration['enhanced_recommendations'].append("✅ HIGH CONFIDENCE SETUP: Both sentiment and waves align favorably")
+    elif adjusted_confidence >= 60:
+        integration['enhanced_recommendations'].append("✅ MODERATE CONFIDENCE: Good setup with minor concerns")
+    elif adjusted_confidence >= 40:
+        integration['enhanced_recommendations'].append("⚠️ LOW CONFIDENCE: Proceed with caution and tight risk management")
+    else:
+        integration['enhanced_recommendations'].append("❌ POOR SETUP: Avoid trading until better alignment emerges")
+    
+    return integration
+
+def display_sentiment_wave_integration(integration, ticker):
+    """Display the integrated sentiment and wave analysis"""
+    
+    if not integration:
+        st.info("💡 Sentiment integration requires both wave and sentiment data")
+        return
+    
+    st.markdown("### 🔗 **Sentiment-Wave Integration Analysis**")
+    
+    # Alignment status
+    alignment = integration.get('wave_sentiment_alignment', {})
+    status = alignment.get('status', 'UNKNOWN')
+    strength = alignment.get('strength', 'Unknown')
+    description = alignment.get('description', 'No description available')
+    
+    if status == 'ALIGNED':
+        status_color = "green"
+        status_emoji = "✅"
+    elif status == 'CONTRARIAN':
+        status_color = "orange"
+        status_emoji = "🔄"
+    elif status == 'DIVERGENCE':
+        status_color = "red"
+        status_emoji = "⚠️"
+    else:
+        status_color = "blue"
+        status_emoji = "😐"
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.markdown(f"""
+        <div style="padding: 20px; background: #1e1e1e; border-radius: 10px; border-left: 5px solid {status_color};">
+            <h4 style="color: {status_color}; margin: 0;">{status_emoji} {status} - {strength} Signal</h4>
+            <p style="color: white; margin: 10px 0 0 0;">{description}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        adjusted_confidence = integration.get('adjusted_confidence', 50)
+        confidence_color = "green" if adjusted_confidence >= 70 else "orange" if adjusted_confidence >= 50 else "red"
+        
+        st.markdown(f"""
+        <div style="text-align: center; padding: 15px; background: #2e2e2e; border-radius: 10px;">
+            <h5 style="color: {confidence_color}; margin: 0;">Adjusted Confidence</h5>
+            <h2 style="color: {confidence_color}; margin: 10px 0;">{adjusted_confidence:.0f}%</h2>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Enhanced recommendations
+    if integration.get('enhanced_recommendations'):
+        st.markdown("#### 🎯 **Enhanced Trading Recommendations**")
+        for rec in integration['enhanced_recommendations']:
+            st.markdown(f"• {rec}")
+    
+    # Risk adjustments
+    if integration.get('risk_adjustments'):
+        st.markdown("#### ⚖️ **Risk Management Adjustments**")
+        for risk in integration['risk_adjustments']:
+            st.markdown(f"• {risk}")
+    
+    # Timing insights
+    if integration.get('timing_insights'):
+        st.markdown("#### ⏰ **Market Timing Insights**")
+        for insight in integration['timing_insights']:
+            st.markdown(f"• {insight}")
+    
+    st.markdown("---")
+    st.markdown("*💡 Integration analysis combines Elliott Wave patterns with market sentiment psychology for enhanced decision-making.*")
 
 if __name__ == "__main__":
     main()
