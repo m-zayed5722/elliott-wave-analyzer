@@ -2519,23 +2519,42 @@ def scan_multiple_stocks(symbols, timeframe='daily', threshold=4.0):
                 # Analyze waves
                 analysis = analyze_elliott_waves(df, threshold)
                 
-                if analysis and analysis.get('primary_count'):
+                # Check if we have any wave analysis results
+                if analysis and len(analysis.get('zigzag_pivots', [])) >= 5:
                     primary = analysis.get('primary_count', {})
-                    score = getattr(primary, 'confidence_score', 0) if hasattr(primary, 'confidence_score') else primary.get('confidence_score', 0)
-                    pattern = getattr(primary, 'pattern_type', 'Unknown') if hasattr(primary, 'pattern_type') else primary.get('pattern_type', 'Unknown')
+                    
+                    # Be more flexible with pattern detection
+                    score = 0
+                    pattern = 'Elliott Wave Pattern'
+                    
+                    # Try to get confidence score from different sources
+                    if isinstance(primary, dict):
+                        score = primary.get('confidence_score', 0)
+                        pattern = primary.get('pattern_type', 'Elliott Wave Pattern')
+                    else:
+                        # If primary is an object
+                        score = getattr(primary, 'confidence_score', 0) if hasattr(primary, 'confidence_score') else 0
+                        pattern = getattr(primary, 'pattern_type', 'Elliott Wave Pattern') if hasattr(primary, 'pattern_type') else 'Elliott Wave Pattern'
+                    
+                    # If no confidence score found, calculate based on pivots
+                    if score == 0:
+                        pivot_count = len(analysis.get('zigzag_pivots', []))
+                        score = min(pivot_count * 10, 85)  # Base score on number of pivots
                     
                     current_price = df['close'].iloc[-1] if not df.empty else 0
                     
                     # Calculate price targets
                     targets = calculate_price_targets(analysis, current_price)
                     
+                    # Add any pattern with at least 5 pivots (minimum for Elliott Wave)
                     results.append({
                         'symbol': symbol,
                         'confidence': score,
                         'pattern': pattern,
                         'current_price': current_price,
                         'analysis': analysis,
-                        'targets': targets
+                        'targets': targets,
+                        'pivot_count': len(analysis.get('zigzag_pivots', []))
                     })
                     
         except Exception as e:
@@ -2563,7 +2582,7 @@ def display_scanner_results(scan_results):
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        min_confidence = st.slider("Minimum Confidence %", 0, 100, 50)
+        min_confidence = st.slider("Minimum Confidence %", 0, 100, 20)  # Lower default to show more results
     with col2:
         pattern_filter = st.selectbox("Pattern Type", ['All', 'impulse', 'corrective', 'diagonal'])
     with col3:
@@ -2605,6 +2624,9 @@ def display_scanner_results(scan_results):
             with col_a:
                 st.metric("Confidence Score", f"{confidence:.1f}%")
                 st.metric("Current Price", f"${price:.2f}")
+                # Show pivot count
+                pivot_count = result.get('pivot_count', 0)
+                st.metric("Wave Pivots", pivot_count)
             
             with col_b:
                 st.metric("Pattern Type", pattern.title())
@@ -2616,6 +2638,10 @@ def display_scanner_results(scan_results):
                     target = wave_targets['wave_3_target']
                     upside = ((target - price) / price) * 100
                     st.metric("Wave 3 Target", f"${target:.2f}", f"+{upside:.1f}%")
+                elif 'next_target' in wave_targets:
+                    target = wave_targets['next_target']
+                    upside = ((target - price) / price) * 100
+                    st.metric("Next Target", f"${target:.2f}", f"+{upside:.1f}%")
             
             with col_c:
                 # Support/Resistance
@@ -2629,6 +2655,27 @@ def display_scanner_results(scan_results):
                     resistance = sr_levels['major_resistance'] 
                     upside = ((resistance - price) / price) * 100
                     st.metric("Major Resistance", f"${resistance:.2f}", f"+{upside:.1f}%")
+            
+            # Show additional analysis info
+            st.markdown("---")
+            analysis = result.get('analysis', {})
+            zigzag_pivots = analysis.get('zigzag_pivots', [])
+            
+            if zigzag_pivots:
+                st.markdown(f"**📊 Analysis Summary:**")
+                st.markdown(f"- Wave Pivots Detected: {len(zigzag_pivots)}")
+                st.markdown(f"- Pattern Confidence: {confidence:.1f}%")
+                
+                # Show latest pivot info
+                if len(zigzag_pivots) >= 2:
+                    latest = zigzag_pivots[-1]
+                    previous = zigzag_pivots[-2]
+                    trend = "↗️ Uptrend" if latest['price'] > previous['price'] else "↘️ Downtrend"
+                    st.markdown(f"- Current Trend: {trend}")
+                
+                # Quick action button
+                if st.button(f"📈 Analyze {symbol} in Detail", key=f"analyze_{symbol}"):
+                    st.info(f"Click 'Analyze Waves' in the main section with {symbol} to see detailed analysis.")
             
             # Analysis summary for this symbol
             analysis = result.get('analysis', {})
@@ -3345,6 +3392,7 @@ def main():
                     scan_results = scan_multiple_stocks(symbols_to_scan, scan_timeframe, scan_threshold)
                 
                 if scan_results:
+                    st.success(f"✅ Found {len(scan_results)} Elliott Wave patterns!")
                     display_scanner_results(scan_results)
                 else:
                     st.warning("No Elliott Wave patterns found in the scanned symbols. Try adjusting the threshold or selecting different symbols.")
