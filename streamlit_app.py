@@ -47,6 +47,60 @@ st.markdown("""
         font-weight: bold;
         color: #1f77b4;
     }
+    
+    /* Fix for metric visibility issues */
+    .metric-container {
+        background-color: #fafafa;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        border: 1px solid #e0e0e0;
+        margin: 0.5rem 0;
+    }
+    
+    /* Ensure metric text is visible */
+    [data-testid="metric-container"] {
+        background-color: #fafafa !important;
+        border: 1px solid #e0e0e0 !important;
+        padding: 1rem !important;
+        border-radius: 0.5rem !important;
+    }
+    
+    [data-testid="metric-container"] > div {
+        color: #262730 !important;
+    }
+    
+    [data-testid="metric-container"] label {
+        color: #262730 !important;
+        font-weight: 600 !important;
+    }
+    
+    [data-testid="metric-container"] [data-testid="metric-value"] {
+        color: #262730 !important;
+        font-size: 1.2rem !important;
+        font-weight: 600 !important;
+    }
+    
+    [data-testid="metric-container"] [data-testid="metric-delta"] {
+        font-weight: 500 !important;
+    }
+    
+    /* Dark theme compatibility */
+    .stApp[data-theme="dark"] [data-testid="metric-container"] {
+        background-color: #2e2e2e !important;
+        border-color: #4a4a4a !important;
+    }
+    
+    .stApp[data-theme="dark"] [data-testid="metric-container"] > div {
+        color: #ffffff !important;
+    }
+    
+    .stApp[data-theme="dark"] [data-testid="metric-container"] label {
+        color: #ffffff !important;
+    }
+    
+    .stApp[data-theme="dark"] [data-testid="metric-container"] [data-testid="metric-value"] {
+        color: #ffffff !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -776,7 +830,7 @@ def display_price_targets(targets, current_price):
     # Wave Targets
     wave_targets = targets.get('wave_targets', {})
     if wave_targets:
-        st.write("**📈 Elliott Wave Price Targets:**")
+        st.markdown("**📈 Elliott Wave Price Targets:**")
         
         col1, col2 = st.columns(2)
         
@@ -784,20 +838,35 @@ def display_price_targets(targets, current_price):
             if 'wave_3_target' in wave_targets:
                 target = wave_targets['wave_3_target']
                 distance = ((target - current_price) / current_price) * 100
+                
+                # Use colored container for better visibility
+                if distance > 0:
+                    delta_color = "normal"
+                else:
+                    delta_color = "inverse"
+                
                 st.metric(
                     "🎯 Wave 3 Target",
                     f"${target:.2f}",
                     f"{distance:+.1f}%",
+                    delta_color=delta_color,
                     help="Primary Wave 3 target (1.618x Wave 1)"
                 )
             
             if 'wave_5_target' in wave_targets:
                 target = wave_targets['wave_5_target'] 
                 distance = ((target - current_price) / current_price) * 100
+                
+                if distance > 0:
+                    delta_color = "normal"
+                else:
+                    delta_color = "inverse"
+                
                 st.metric(
                     "🏁 Wave 5 Target", 
                     f"${target:.2f}",
                     f"{distance:+.1f}%",
+                    delta_color=delta_color,
                     help="Wave 5 target (equality with Wave 1)"
                 )
         
@@ -805,27 +874,61 @@ def display_price_targets(targets, current_price):
             if 'wave_3_extension' in wave_targets:
                 target = wave_targets['wave_3_extension']
                 distance = ((target - current_price) / current_price) * 100
+                
+                if distance > 0:
+                    delta_color = "normal"
+                else:
+                    delta_color = "inverse"
+                
                 st.metric(
                     "🚀 Wave 3 Extension",
                     f"${target:.2f}", 
                     f"{distance:+.1f}%",
+                    delta_color=delta_color,
                     help="Extended Wave 3 target (2.618x Wave 1)"
                 )
                 
             if 'wave_5_extension' in wave_targets:
                 target = wave_targets['wave_5_extension']
                 distance = ((target - current_price) / current_price) * 100
+                
+                if distance > 0:
+                    delta_color = "normal"
+                else:
+                    delta_color = "inverse"
+                
                 st.metric(
                     "🎯 Wave 5 Extension",
                     f"${target:.2f}",
-                    f"{distance:+.1f}%", 
+                    f"{distance:+.1f}%",
+                    delta_color=delta_color,
                     help="Extended Wave 5 target"
                 )
+        
+        # Alternative display using colored info boxes
+        st.markdown("---")
+        st.markdown("**📊 Quick Price Target Summary:**")
+        
+        target_summary = []
+        if 'wave_3_target' in wave_targets:
+            target = wave_targets['wave_3_target']
+            distance = ((target - current_price) / current_price) * 100
+            target_summary.append(f"• **Wave 3**: ${target:.2f} ({distance:+.1f}%)")
+        
+        if 'wave_5_target' in wave_targets:
+            target = wave_targets['wave_5_target']
+            distance = ((target - current_price) / current_price) * 100
+            target_summary.append(f"• **Wave 5**: ${target:.2f} ({distance:+.1f}%)")
+        
+        if target_summary:
+            for summary in target_summary:
+                st.markdown(summary)
     
-    # Support/Resistance
+    # Support/Resistance with improved visibility
     sr_levels = targets.get('support_resistance', {})
     if sr_levels:
-        st.write("**🛡️ Support & Resistance Levels:**")
+        st.markdown("---")
+        st.markdown("**🛡️ Support & Resistance Levels:**")
         
         col1, col2 = st.columns(2)
         
@@ -833,39 +936,65 @@ def display_price_targets(targets, current_price):
             if 'major_support' in sr_levels:
                 level = sr_levels['major_support']
                 distance = ((level - current_price) / current_price) * 100
+                
                 st.metric(
                     "🔻 Major Support",
                     f"${level:.2f}",
-                    f"{distance:+.1f}%"
+                    f"{distance:+.1f}%",
+                    delta_color="inverse" if distance < 0 else "normal"
                 )
                 
             if 'immediate_support' in sr_levels:
                 level = sr_levels['immediate_support']
                 distance = ((level - current_price) / current_price) * 100  
+                
                 st.metric(
                     "📉 Immediate Support",
                     f"${level:.2f}",
-                    f"{distance:+.1f}%"
+                    f"{distance:+.1f}%",
+                    delta_color="inverse" if distance < 0 else "normal"
                 )
         
         with col2:
             if 'major_resistance' in sr_levels:
                 level = sr_levels['major_resistance']
                 distance = ((level - current_price) / current_price) * 100
+                
                 st.metric(
                     "🔺 Major Resistance", 
                     f"${level:.2f}",
-                    f"{distance:+.1f}%"
+                    f"{distance:+.1f}%",
+                    delta_color="normal" if distance > 0 else "inverse"
                 )
                 
             if 'immediate_resistance' in sr_levels:
                 level = sr_levels['immediate_resistance']
                 distance = ((level - current_price) / current_price) * 100
+                
                 st.metric(
                     "📈 Immediate Resistance",
                     f"${level:.2f}",
-                    f"{distance:+.1f}%"
+                    f"{distance:+.1f}%",
+                    delta_color="normal" if distance > 0 else "inverse"
                 )
+        
+        # Alternative text-based summary for support/resistance
+        st.markdown("**📋 Support/Resistance Summary:**")
+        sr_summary = []
+        
+        if 'major_support' in sr_levels:
+            level = sr_levels['major_support']
+            distance = ((level - current_price) / current_price) * 100
+            sr_summary.append(f"• **Major Support**: ${level:.2f} ({distance:+.1f}%)")
+        
+        if 'major_resistance' in sr_levels:
+            level = sr_levels['major_resistance']
+            distance = ((level - current_price) / current_price) * 100
+            sr_summary.append(f"• **Major Resistance**: ${level:.2f} ({distance:+.1f}%)")
+        
+        if sr_summary:
+            for summary in sr_summary:
+                st.markdown(summary)
 
 def scan_multiple_stocks(symbols, timeframe='daily', threshold=4.0):
     """Scan multiple stocks for Elliott Wave patterns"""
