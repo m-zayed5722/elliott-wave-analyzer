@@ -97,8 +97,8 @@ build/
 .env.test.local
 .env.production.local
 
-# Streamlit
-.streamlit/
+# Streamlit secrets (but not config)
+.streamlit/secrets.toml
 
 # Jupyter Notebooks
 .ipynb_checkpoints/
