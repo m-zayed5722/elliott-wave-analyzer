@@ -541,6 +541,77 @@ def generate_analysis_summary(wave_analysis, invalidation_levels):
     
     return summary
 
+def generate_chart_summary(wave_analysis, invalidation_levels, ticker, primary_count_labels=None):
+    """Generate a concise paragraph summarizing the Elliott Wave analysis for display next to chart"""
+    
+    primary = wave_analysis.get('primary_count')
+    if not primary:
+        return "⚠️ **Analysis Incomplete**: Unable to identify clear Elliott Wave patterns in the current price data. Consider adjusting the ZigZag threshold or trying a different timeframe for better pattern recognition."
+    
+    primary_score = getattr(primary, 'confidence_score', 0) if hasattr(primary, 'confidence_score') else primary.get('confidence_score', 0)
+    primary_pattern = getattr(primary, 'pattern_type', 'Unknown') if hasattr(primary, 'pattern_type') else primary.get('pattern_type', 'Unknown')
+    
+    # Determine current wave position from labels
+    current_wave = "unknown"
+    if primary_count_labels and len(primary_count_labels) > 0:
+        current_wave = str(primary_count_labels[-1])
+    
+    # Build the summary paragraph
+    summary = f"**📈 {ticker} Elliott Wave Analysis Summary:** "
+    
+    # Confidence assessment
+    if primary_score > 75:
+        confidence_text = "shows a **strong Elliott Wave pattern**"
+        emoji = "🟢"
+    elif primary_score > 60:
+        confidence_text = "displays a **moderate Elliott Wave structure**"
+        emoji = "🟡"
+    else:
+        confidence_text = "exhibits a **weak Elliott Wave pattern**"
+        emoji = "🔴"
+    
+    summary += f"The analysis {confidence_text} with {primary_score:.0f}% confidence {emoji}. "
+    
+    # Pattern interpretation
+    if "impulse" in primary_pattern.lower():
+        if current_wave in ["1", "3", "5"]:
+            summary += f"Currently positioned in **Wave {current_wave}** of a 5-wave impulse sequence, suggesting the primary trend continues. "
+        elif current_wave in ["2", "4"]:
+            summary += f"Currently in **Wave {current_wave}** correction within a 5-wave impulse, indicating a temporary pullback before trend resumption. "
+        else:
+            summary += "The pattern suggests a **5-wave impulse structure** in the direction of the main trend. "
+    elif "corrective" in primary_pattern.lower():
+        if current_wave in ["A", "C"]:
+            summary += f"Currently in **Wave {current_wave}** of a corrective pattern, moving against the primary trend. "
+        elif current_wave == "B":
+            summary += f"Currently in **Wave B** counter-correction, providing a temporary bounce before the final corrective wave. "
+        else:
+            summary += "The pattern indicates a **3-wave correction** against the primary trend. "
+    elif "diagonal" in primary_pattern.lower():
+        summary += "A **diagonal (wedge) pattern** is forming, typically signaling potential trend exhaustion and reversal. "
+    else:
+        summary += f"The analysis identifies a **{primary_pattern}** pattern. "
+    
+    # Add invalidation level context
+    invalidation_price = invalidation_levels.get('primary_invalidation')
+    if invalidation_price:
+        summary += f"**Critical Level**: ${invalidation_price:.2f} - a break of this level would invalidate the current wave count and require pattern reassessment. "
+    
+    # Trading context
+    if "impulse" in primary_pattern.lower():
+        if current_wave in ["2", "4"]:
+            summary += "**Trading Implication**: This correction may offer entry opportunities for continuation of the main trend."
+        elif current_wave == "5":
+            summary += "**Trading Implication**: Final wave - watch for completion and potential reversal signals."
+        else:
+            summary += "**Trading Implication**: Trend continuation expected - consider positions aligned with the primary direction."
+    elif "corrective" in primary_pattern.lower():
+        summary += "**Trading Implication**: Counter-trend movement - expect eventual reversal back to primary trend direction."
+    else:
+        summary += "**Trading Implication**: Monitor key levels and await clearer directional signals."
+    
+    return summary
+
 # Initialize database
 init_db()
 
@@ -698,6 +769,22 @@ def main():
                 # Display chart
                 fig = create_candlestick_chart(df, analysis)
                 st.plotly_chart(fig, use_container_width=True)
+                
+                # Add concise analysis summary next to the chart
+                if analysis:
+                    primary_labels = analysis.get('primary_count', {}).get('labels', [])
+                    invalidation_levels = analysis.get('invalidation_levels', {})
+                    chart_summary = generate_chart_summary(
+                        {'primary_count': analysis.get('primary_count')}, 
+                        invalidation_levels, 
+                        ticker,
+                        primary_labels
+                    )
+                    
+                    st.markdown("---")
+                    st.markdown("### 🎯 Chart Analysis Summary")
+                    st.markdown(chart_summary)
+                    st.markdown("---")
                 
             else:
                 st.error("❌ Could not fetch data. Please check the ticker symbol and try again.")
