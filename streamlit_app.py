@@ -80,6 +80,22 @@ st.markdown("""
         text-align: center;
         padding: 10px;
     }
+    
+    /* Confidence analysis styling */
+    .confidence-factor {
+        background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+        border-radius: 8px;
+        padding: 12px;
+        margin: 8px 0;
+        border-left: 4px solid #007bff;
+    }
+    
+    .confidence-score {
+        font-size: 2.5em;
+        font-weight: bold;
+        text-align: center;
+        margin: 20px 0;
+    }
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
 </style>
@@ -1029,6 +1045,311 @@ def display_risk_management(risk_mgmt, ticker):
             </div>
             """, unsafe_allow_html=True)
 
+def calculate_detailed_confidence_score(analysis_results, pivots, price_data=None):
+    """Calculate detailed confidence scoring with breakdown of factors"""
+    
+    if not analysis_results or not pivots:
+        return {}
+    
+    primary = analysis_results.get('primary_count', {})
+    if not primary:
+        return {}
+    
+    confidence_breakdown = {
+        'overall_score': 0,
+        'factors': {},
+        'recommendations': [],
+        'strengths': [],
+        'weaknesses': []
+    }
+    
+    try:
+        # Factor 1: Wave Count Integrity (30% weight)
+        wave_integrity_score = 0
+        if len(pivots) >= 5:  # Minimum for a complete 5-wave pattern
+            wave_integrity_score = min(100, (len(pivots) / 8) * 100)  # Ideal is 8+ pivots
+            if len(pivots) >= 8:
+                confidence_breakdown['strengths'].append("✅ Complete wave structure with sufficient pivots")
+            elif len(pivots) >= 5:
+                confidence_breakdown['strengths'].append("✅ Adequate pivot count for analysis")
+            else:
+                confidence_breakdown['weaknesses'].append("⚠️ Limited pivot points - pattern may be incomplete")
+        
+        confidence_breakdown['factors']['wave_integrity'] = {
+            'score': wave_integrity_score,
+            'weight': 30,
+            'description': f"Wave structure completeness ({len(pivots)} pivots)"
+        }
+        
+        # Factor 2: Fibonacci Relationships (25% weight)
+        fib_score = 0
+        fib_levels = analysis_results.get('fibonacci_levels', {})
+        if fib_levels:
+            # Check for common Fibonacci relationships
+            fib_relationships = 0
+            
+            # Check retracement levels
+            if 'retracement' in fib_levels:
+                ret_levels = fib_levels['retracement']
+                common_rets = [0.382, 0.5, 0.618, 0.786]
+                for level_data in ret_levels:
+                    if isinstance(level_data, dict) and 'level' in level_data:
+                        level = level_data['level']
+                        if any(abs(level - common) < 0.05 for common in common_rets):
+                            fib_relationships += 1
+            
+            # Check extension levels  
+            if 'extension' in fib_levels:
+                ext_levels = fib_levels['extension']
+                common_exts = [1.0, 1.272, 1.618, 2.618]
+                for level_data in ext_levels:
+                    if isinstance(level_data, dict) and 'level' in level_data:
+                        level = level_data['level']
+                        if any(abs(level - common) < 0.1 for common in common_exts):
+                            fib_relationships += 1
+            
+            fib_score = min(100, fib_relationships * 25)  # Up to 4 relationships
+            
+            if fib_score >= 75:
+                confidence_breakdown['strengths'].append("✅ Strong Fibonacci relationships present")
+            elif fib_score >= 50:
+                confidence_breakdown['strengths'].append("✅ Good Fibonacci support")
+            else:
+                confidence_breakdown['weaknesses'].append("⚠️ Limited Fibonacci confirmation")
+        else:
+            confidence_breakdown['weaknesses'].append("❌ No Fibonacci analysis available")
+        
+        confidence_breakdown['factors']['fibonacci'] = {
+            'score': fib_score,
+            'weight': 25,
+            'description': "Fibonacci relationship strength"
+        }
+        
+        # Factor 3: Wave Proportions (20% weight)
+        proportion_score = 0
+        if len(pivots) >= 5:
+            # Calculate wave lengths
+            wave_lengths = []
+            for i in range(len(pivots) - 1):
+                length = abs(pivots[i+1]['price'] - pivots[i]['price'])
+                wave_lengths.append(length)
+            
+            if len(wave_lengths) >= 4:
+                # Check Elliott Wave rules
+                # Wave 3 should not be the shortest
+                if len(wave_lengths) >= 3:
+                    wave_3_length = wave_lengths[2] if len(wave_lengths) > 2 else 0
+                    wave_1_length = wave_lengths[0] if len(wave_lengths) > 0 else 0
+                    wave_5_length = wave_lengths[4] if len(wave_lengths) > 4 else 0
+                    
+                    if wave_3_length > 0:
+                        if wave_1_length > 0 and wave_3_length > wave_1_length:
+                            proportion_score += 40
+                            confidence_breakdown['strengths'].append("✅ Wave 3 longer than Wave 1")
+                        else:
+                            confidence_breakdown['weaknesses'].append("❌ Wave 3 may be too short")
+                        
+                        if wave_5_length > 0 and wave_3_length > wave_5_length:
+                            proportion_score += 40
+                        elif wave_5_length == 0:
+                            proportion_score += 20  # Wave 5 not complete yet
+                        
+                        # Additional points for reasonable proportions
+                        if wave_1_length > 0:
+                            ratio_3_to_1 = wave_3_length / wave_1_length
+                            if 1.2 <= ratio_3_to_1 <= 4.0:  # Reasonable range
+                                proportion_score += 20
+                                confidence_breakdown['strengths'].append("✅ Good Wave 3/Wave 1 proportion")
+        
+        confidence_breakdown['factors']['proportions'] = {
+            'score': proportion_score,
+            'weight': 20,
+            'description': "Elliott Wave proportion rules compliance"
+        }
+        
+        # Factor 4: Trend Clarity (15% weight)
+        trend_score = 0
+        wave_trend = determine_wave_trend_direction(pivots)
+        if "trending" in wave_trend:
+            if len(pivots) >= 3:
+                # Check for clear trend progression
+                recent_prices = [p['price'] for p in pivots[-5:]]
+                if len(recent_prices) >= 3:
+                    if "upward" in wave_trend:
+                        if recent_prices[-1] > recent_prices[0]:  # Higher high
+                            trend_score = 85
+                            confidence_breakdown['strengths'].append("✅ Clear upward trend structure")
+                        else:
+                            trend_score = 40
+                    elif "downward" in wave_trend:
+                        if recent_prices[-1] < recent_prices[0]:  # Lower low
+                            trend_score = 85
+                            confidence_breakdown['strengths'].append("✅ Clear downward trend structure")
+                        else:
+                            trend_score = 40
+        else:
+            trend_score = 30
+            confidence_breakdown['weaknesses'].append("⚠️ Sideways/unclear trend direction")
+        
+        confidence_breakdown['factors']['trend_clarity'] = {
+            'score': trend_score,
+            'weight': 15,
+            'description': "Trend direction clarity"
+        }
+        
+        # Factor 5: Pattern Recognition (10% weight)
+        pattern_score = 0
+        primary_pattern = getattr(primary, 'pattern_type', '') if hasattr(primary, 'pattern_type') else primary.get('pattern_type', '')
+        
+        if primary_pattern:
+            if primary_pattern.lower() in ['impulse', 'motive']:
+                pattern_score = 90
+                confidence_breakdown['strengths'].append("✅ Clear impulse pattern identified")
+            elif primary_pattern.lower() in ['corrective', 'correction']:
+                pattern_score = 75
+                confidence_breakdown['strengths'].append("✅ Corrective pattern identified")
+            elif primary_pattern.lower() == 'diagonal':
+                pattern_score = 70
+                confidence_breakdown['strengths'].append("✅ Diagonal pattern identified")
+            else:
+                pattern_score = 50
+        else:
+            pattern_score = 30
+            confidence_breakdown['weaknesses'].append("⚠️ Pattern type unclear")
+        
+        confidence_breakdown['factors']['pattern'] = {
+            'score': pattern_score,
+            'weight': 10,
+            'description': "Pattern recognition clarity"
+        }
+        
+        # Calculate weighted overall score
+        total_weighted_score = 0
+        total_weight = 0
+        
+        for factor, data in confidence_breakdown['factors'].items():
+            weighted_contribution = (data['score'] * data['weight']) / 100
+            total_weighted_score += weighted_contribution
+            total_weight += data['weight']
+        
+        confidence_breakdown['overall_score'] = min(100, total_weighted_score)
+        
+        # Generate recommendations based on score
+        if confidence_breakdown['overall_score'] >= 80:
+            confidence_breakdown['recommendations'].extend([
+                "🎯 High-confidence trade setup - consider position sizing",
+                "📈 Monitor for entry signals on any pullbacks",
+                "⚖️ Use standard risk management (2-3% risk)"
+            ])
+        elif confidence_breakdown['overall_score'] >= 60:
+            confidence_breakdown['recommendations'].extend([
+                "✅ Moderate confidence - suitable for trading with caution", 
+                "🔍 Wait for additional confirmation signals",
+                "⚖️ Consider reduced position sizing (1-2% risk)"
+            ])
+        elif confidence_breakdown['overall_score'] >= 40:
+            confidence_breakdown['recommendations'].extend([
+                "⚠️ Low confidence - paper trade or wait for improvement",
+                "🔍 Look for additional timeframe confluence",
+                "📚 Consider this a learning opportunity"
+            ])
+        else:
+            confidence_breakdown['recommendations'].extend([
+                "❌ Very low confidence - avoid trading this setup",
+                "📊 Try different timeframes or wait for clearer patterns",
+                "🔧 Adjust ZigZag sensitivity for better pattern detection"
+            ])
+        
+    except Exception as e:
+        st.error(f"Error calculating confidence score: {str(e)}")
+    
+    return confidence_breakdown
+
+def display_confidence_analysis(confidence_data):
+    """Display detailed confidence analysis breakdown"""
+    
+    if not confidence_data or 'overall_score' not in confidence_data:
+        st.info("💡 Confidence analysis requires completed Elliott Wave analysis")
+        return
+    
+    overall_score = confidence_data['overall_score']
+    
+    st.markdown("### 🎯 **Wave Confidence Analysis**")
+    
+    # Overall Score Display
+    score_color = '#28a745' if overall_score >= 70 else '#ffc107' if overall_score >= 50 else '#dc3545'
+    score_grade = 'High' if overall_score >= 70 else 'Moderate' if overall_score >= 50 else 'Low'
+    
+    st.markdown(f"""
+    <div class="price-card" style="background: linear-gradient(135deg, {score_color}22, {score_color}11); border: 3px solid {score_color}; text-align: center;">
+        <h2 style="color: {score_color}; margin-bottom: 10px;">Overall Confidence Score</h2>
+        <h1 style="color: #212529; margin: 10px 0; font-size: 3em;">{overall_score:.0f}%</h1>
+        <h3 style="color: {score_color}; margin: 0;">{score_grade} Confidence</h3>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Factor Breakdown
+    st.markdown("#### 📊 Confidence Factor Breakdown")
+    
+    if 'factors' in confidence_data:
+        for factor_name, factor_data in confidence_data['factors'].items():
+            score = factor_data['score']
+            weight = factor_data['weight']
+            description = factor_data['description']
+            
+            # Calculate contribution to overall score
+            contribution = (score * weight) / 100
+            
+            # Color coding for factor scores
+            factor_color = '#28a745' if score >= 70 else '#ffc107' if score >= 50 else '#dc3545'
+            
+            col1, col2, col3 = st.columns([3, 1, 1])
+            
+            with col1:
+                st.markdown(f"""
+                <div class="price-card" style="border-left: 4px solid {factor_color}; margin: 5px 0;">
+                    <h4 style="color: {factor_color}; margin-bottom: 5px;">{factor_name.replace('_', ' ').title()}</h4>
+                    <p style="color: #6c757d; margin: 0; font-size: 0.9em;">{description}</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col2:
+                st.markdown(f"""
+                <div class="risk-metric">
+                    <strong style="color: {factor_color}; font-size: 1.2em;">{score:.0f}%</strong><br>
+                    <small style="color: #6c757d;">Score</small>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col3:
+                st.markdown(f"""
+                <div class="risk-metric">
+                    <strong style="color: #6c757d; font-size: 1.2em;">{weight}%</strong><br>
+                    <small style="color: #6c757d;">Weight</small>
+                </div>
+                """, unsafe_allow_html=True)
+    
+    # Strengths and Weaknesses
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if confidence_data.get('strengths'):
+            st.markdown("#### 💪 **Analysis Strengths**")
+            for strength in confidence_data['strengths']:
+                st.markdown(f"- {strength}")
+    
+    with col2:
+        if confidence_data.get('weaknesses'):
+            st.markdown("#### ⚠️ **Areas for Improvement**")
+            for weakness in confidence_data['weaknesses']:
+                st.markdown(f"- {weakness}")
+    
+    # Recommendations
+    if confidence_data.get('recommendations'):
+        st.markdown("#### 🎯 **Trading Recommendations**")
+        for i, rec in enumerate(confidence_data['recommendations'], 1):
+            st.markdown(f"{i}. {rec}")
+
 def create_multi_timeframe_analysis(ticker, timeframes=['daily', '4h', '1h']):
     """Create multi-timeframe Elliott Wave analysis"""
     
@@ -1710,6 +2031,22 @@ def main():
                             display_risk_management(risk_mgmt, ticker)
                     else:
                         st.info("💡 Risk management requires Elliott Wave analysis with invalidation levels")
+                
+                # Confidence Analysis Section
+                st.markdown("---")
+                with st.expander("🎯 **Advanced Confidence Analysis**", expanded=False):
+                    pivots = analysis.get('zigzag_pivots', [])
+                    price_data = st.session_state.price_data
+                    
+                    if pivots and len(pivots) >= 3:
+                        with st.spinner("Calculating detailed confidence metrics..."):
+                            confidence_data = calculate_detailed_confidence_score(analysis, pivots, price_data)
+                        
+                        if confidence_data:
+                            display_confidence_analysis(confidence_data)
+                    else:
+                        st.info("💡 Advanced confidence analysis requires sufficient wave data (minimum 3 pivots)")
+            
             
             
         else:
