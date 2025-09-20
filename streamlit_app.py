@@ -60,6 +60,28 @@ st.markdown("""
         margin: 10px 0;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
+    
+    /* Risk management specific styling */
+    .risk-card {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        padding: 12px;
+        margin: 8px 0;
+        transition: all 0.3s ease;
+    }
+    
+    .risk-card:hover {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        transform: translateY(-2px);
+    }
+    
+    .risk-metric {
+        text-align: center;
+        padding: 10px;
+    }
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -773,6 +795,240 @@ def calculate_price_targets(analysis_results, current_price):
         
     return targets
 
+def calculate_risk_management(current_price, invalidation_level, price_targets, account_size=10000, risk_percentage=2):
+    """Calculate comprehensive risk management metrics for Elliott Wave trades"""
+    
+    if not invalidation_level or not price_targets:
+        return {}
+    
+    risk_mgmt = {
+        'position_sizing': {},
+        'stop_loss': {},
+        'take_profit': {},
+        'risk_reward': {},
+        'trade_analysis': {}
+    }
+    
+    try:
+        # Calculate risk per trade (account size * risk percentage)
+        risk_amount = account_size * (risk_percentage / 100)
+        
+        # Stop loss calculation based on invalidation level
+        stop_loss_distance = abs(current_price - invalidation_level)
+        stop_loss_percentage = (stop_loss_distance / current_price) * 100
+        
+        # Position sizing based on risk amount and stop loss distance
+        if stop_loss_distance > 0:
+            # For stocks: number of shares = risk amount / stop loss distance
+            position_size_shares = int(risk_amount / stop_loss_distance)
+            position_value = position_size_shares * current_price
+            
+            risk_mgmt['position_sizing'] = {
+                'shares': position_size_shares,
+                'position_value': position_value,
+                'risk_amount': risk_amount,
+                'risk_percentage': risk_percentage
+            }
+        
+        # Stop loss details
+        risk_mgmt['stop_loss'] = {
+            'price': invalidation_level,
+            'distance': stop_loss_distance,
+            'percentage': stop_loss_percentage,
+            'description': f"Elliott Wave invalidation level at ${invalidation_level:.2f}"
+        }
+        
+        # Take profit levels from price targets
+        take_profits = []
+        if 'wave_targets' in price_targets:
+            wave_targets = price_targets['wave_targets']
+            for target_name, target_price in wave_targets.items():
+                if target_price and target_price != current_price:
+                    profit_distance = abs(target_price - current_price)
+                    profit_percentage = (profit_distance / current_price) * 100
+                    
+                    # Calculate risk-reward ratio
+                    if stop_loss_distance > 0:
+                        risk_reward_ratio = profit_distance / stop_loss_distance
+                    else:
+                        risk_reward_ratio = 0
+                    
+                    take_profits.append({
+                        'target': target_name.replace('_', ' ').title(),
+                        'price': target_price,
+                        'distance': profit_distance,
+                        'percentage': profit_percentage,
+                        'risk_reward_ratio': risk_reward_ratio
+                    })
+        
+        risk_mgmt['take_profit'] = take_profits
+        
+        # Overall risk-reward analysis
+        if take_profits:
+            best_rr = max(tp['risk_reward_ratio'] for tp in take_profits if tp['risk_reward_ratio'] > 0)
+            avg_rr = np.mean([tp['risk_reward_ratio'] for tp in take_profits if tp['risk_reward_ratio'] > 0]) if take_profits else 0
+            
+            risk_mgmt['risk_reward'] = {
+                'best_ratio': best_rr,
+                'average_ratio': avg_rr,
+                'acceptable': best_rr >= 2.0,  # Professional standard
+                'grade': 'A' if best_rr >= 3.0 else 'B' if best_rr >= 2.0 else 'C' if best_rr >= 1.5 else 'D'
+            }
+        
+        # Trade quality analysis
+        risk_mgmt['trade_analysis'] = {
+            'stop_loss_reasonable': stop_loss_percentage <= 10,  # Stop loss should be reasonable
+            'position_size_reasonable': position_value <= account_size * 0.2,  # Max 20% of account per trade
+            'risk_appropriate': risk_percentage <= 3,  # Max 3% risk per trade
+            'overall_quality': 'Good' if stop_loss_percentage <= 8 and best_rr >= 2.0 else 'Fair' if stop_loss_percentage <= 12 and best_rr >= 1.5 else 'Poor'
+        }
+        
+    except Exception as e:
+        st.error(f"Error calculating risk management: {str(e)}")
+    
+    return risk_mgmt
+
+def display_risk_management(risk_mgmt, ticker):
+    """Display comprehensive risk management analysis"""
+    
+    if not risk_mgmt:
+        st.info("💡 Risk management requires price targets and invalidation levels")
+        return
+    
+    st.markdown("### 🛡️ **Risk Management Analysis**")
+    
+    # Position Sizing Section
+    if 'position_sizing' in risk_mgmt and risk_mgmt['position_sizing']:
+        ps = risk_mgmt['position_sizing']
+        
+        st.markdown("#### 📊 Position Sizing")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.markdown(f"""
+            <div class="price-card" style="background-color: #e8f4fd; border-left: 4px solid #1f77b4;">
+                <h4 style="color: #1f77b4; margin-bottom: 10px;">Recommended Shares</h4>
+                <h3 style="color: #212529; margin: 0;">{ps['shares']:,}</h3>
+                <p style="color: #6c757d; margin: 5px 0 0 0;">shares of {ticker}</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown(f"""
+            <div class="price-card" style="background-color: #f8f9fa; border-left: 4px solid #6c757d;">
+                <h4 style="color: #6c757d; margin-bottom: 10px;">Position Value</h4>
+                <h3 style="color: #212529; margin: 0;">${ps['position_value']:,.2f}</h3>
+                <p style="color: #6c757d; margin: 5px 0 0 0;">total investment</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col3:
+            st.markdown(f"""
+            <div class="price-card" style="background-color: #fff3cd; border-left: 4px solid #ffc107;">
+                <h4 style="color: #856404; margin-bottom: 10px;">Risk Amount</h4>
+                <h3 style="color: #212529; margin: 0;">${ps['risk_amount']:,.2f}</h3>
+                <p style="color: #6c757d; margin: 5px 0 0 0;">max loss ({ps['risk_percentage']}%)</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col4:
+            quality = risk_mgmt.get('trade_analysis', {}).get('overall_quality', 'Unknown')
+            quality_color = {'Good': '#28a745', 'Fair': '#ffc107', 'Poor': '#dc3545'}.get(quality, '#6c757d')
+            
+            st.markdown(f"""
+            <div class="price-card" style="background-color: #f8f9fa; border-left: 4px solid {quality_color};">
+                <h4 style="color: {quality_color}; margin-bottom: 10px;">Trade Quality</h4>
+                <h3 style="color: #212529; margin: 0;">{quality}</h3>
+                <p style="color: #6c757d; margin: 5px 0 0 0;">assessment</p>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    # Stop Loss Section
+    if 'stop_loss' in risk_mgmt and risk_mgmt['stop_loss']:
+        sl = risk_mgmt['stop_loss']
+        
+        st.markdown("#### 🛑 Stop Loss Strategy")
+        st.markdown(f"""
+        <div class="price-card" style="background-color: #f8d7da; border: 2px solid #dc3545; border-radius: 8px;">
+            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                <span style="font-size: 1.5em; margin-right: 10px;">🛑</span>
+                <div>
+                    <h4 style="color: #721c24; margin: 0;">Stop Loss: ${sl['price']:.2f}</h4>
+                    <p style="color: #721c24; margin: 0; font-size: 0.9em;">{sl['description']}</p>
+                </div>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span><strong>Distance:</strong> ${sl['distance']:.2f}</span>
+                <span><strong>Risk:</strong> {sl['percentage']:.1f}%</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Take Profit Targets
+    if 'take_profit' in risk_mgmt and risk_mgmt['take_profit']:
+        st.markdown("#### 🎯 Take Profit Targets")
+        
+        for tp in risk_mgmt['take_profit']:
+            rr_color = '#28a745' if tp['risk_reward_ratio'] >= 2.0 else '#ffc107' if tp['risk_reward_ratio'] >= 1.5 else '#dc3545'
+            
+            st.markdown(f"""
+            <div class="price-card" style="background-color: #d1ecf1; border: 2px solid {rr_color}; border-radius: 8px; margin-bottom: 10px;">
+                <div style="display: flex; justify-content: between; align-items: center;">
+                    <div style="flex: 1;">
+                        <h4 style="color: #0c5460; margin: 0 0 5px 0;">{tp['target']}</h4>
+                        <p style="color: #0c5460; margin: 0; font-size: 0.9em;">
+                            Price: <strong>${tp['price']:.2f}</strong> | 
+                            Distance: <strong>${tp['distance']:.2f}</strong> ({tp['percentage']:.1f}%)
+                        </p>
+                    </div>
+                    <div style="text-align: right;">
+                        <span style="background: {rr_color}; color: white; padding: 5px 10px; border-radius: 5px; font-weight: bold;">
+                            R:R {tp['risk_reward_ratio']:.1f}:1
+                        </span>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    # Risk-Reward Summary
+    if 'risk_reward' in risk_mgmt and risk_mgmt['risk_reward']:
+        rr = risk_mgmt['risk_reward']
+        
+        st.markdown("#### ⚖️ Risk-Reward Analysis")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            grade_color = {'A': '#28a745', 'B': '#17a2b8', 'C': '#ffc107', 'D': '#dc3545'}.get(rr['grade'], '#6c757d')
+            st.markdown(f"""
+            <div class="price-card" style="background-color: #f8f9fa; border-left: 4px solid {grade_color};">
+                <h4 style="color: {grade_color}; margin-bottom: 10px;">Trade Grade</h4>
+                <h2 style="color: #212529; margin: 0;">{rr['grade']}</h2>
+                <p style="color: #6c757d; margin: 5px 0 0 0;">overall rating</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown(f"""
+            <div class="price-card" style="background-color: #d4edda; border-left: 4px solid #28a745;">
+                <h4 style="color: #155724; margin-bottom: 10px;">Best R:R Ratio</h4>
+                <h2 style="color: #212529; margin: 0;">{rr['best_ratio']:.1f}:1</h2>
+                <p style="color: #6c757d; margin: 5px 0 0 0;">max potential</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col3:
+            acceptable_color = '#28a745' if rr['acceptable'] else '#dc3545'
+            acceptable_text = 'Yes' if rr['acceptable'] else 'No'
+            
+            st.markdown(f"""
+            <div class="price-card" style="background-color: #f8f9fa; border-left: 4px solid {acceptable_color};">
+                <h4 style="color: {acceptable_color}; margin-bottom: 10px;">Professional Grade</h4>
+                <h2 style="color: #212529; margin: 0;">{acceptable_text}</h2>
+                <p style="color: #6c757d; margin: 5px 0 0 0;">≥ 2:1 ratio</p>
+            </div>
+            """, unsafe_allow_html=True)
+
 def create_multi_timeframe_analysis(ticker, timeframes=['daily', '4h', '1h']):
     """Create multi-timeframe Elliott Wave analysis"""
     
@@ -1408,6 +1664,53 @@ def main():
             if current_price > 0:
                 price_targets = calculate_price_targets(analysis, current_price)
                 display_price_targets(price_targets, current_price)
+                
+                # Risk Management Section
+                st.markdown("---")
+                with st.expander("🛡️ **Risk Management Calculator**", expanded=False):
+                    st.markdown("#### ⚙️ Risk Management Settings")
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        account_size = st.number_input(
+                            "💰 Account Size ($)", 
+                            min_value=1000, 
+                            max_value=10000000, 
+                            value=10000, 
+                            step=1000,
+                            help="Total trading account size"
+                        )
+                    with col2:
+                        risk_percentage = st.slider(
+                            "📊 Risk Per Trade (%)", 
+                            min_value=0.5, 
+                            max_value=5.0, 
+                            value=2.0, 
+                            step=0.25,
+                            help="Maximum percentage of account to risk per trade"
+                        )
+                    
+                    # Get invalidation level for stop loss
+                    invalidation_level = None
+                    if analysis and 'invalidation_levels' in st.session_state:
+                        invalidation_data = st.session_state.invalidation_levels
+                        invalidation_level = invalidation_data.get('primary_invalidation')
+                    
+                    if invalidation_level and price_targets:
+                        # Calculate and display risk management
+                        risk_mgmt = calculate_risk_management(
+                            current_price, 
+                            invalidation_level, 
+                            price_targets, 
+                            account_size, 
+                            risk_percentage
+                        )
+                        
+                        if risk_mgmt:
+                            display_risk_management(risk_mgmt, ticker)
+                    else:
+                        st.info("💡 Risk management requires Elliott Wave analysis with invalidation levels")
+            
             
         else:
             st.info("👈 Select a stock symbol and click 'Analyze Waves' to begin")
