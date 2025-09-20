@@ -545,9 +545,20 @@ def generate_chart_summary(wave_analysis, invalidation_levels, ticker, primary_c
     """Generate a concise paragraph summarizing the Elliott Wave analysis for display next to chart"""
     
     primary = wave_analysis.get('primary_count')
-    if not primary:
-        return "⚠️ **Analysis Incomplete**: Unable to identify clear Elliott Wave patterns in the current price data. Consider adjusting the ZigZag threshold or trying a different timeframe for better pattern recognition."
+    pivots = wave_analysis.get('zigzag_pivots', []) if isinstance(wave_analysis, dict) else []
     
+    # Check if we have any analysis data at all
+    if not primary and len(pivots) == 0:
+        return f"⚠️ **Analysis Status**: No clear Elliott Wave patterns detected for **{ticker}**. This could indicate sideways/consolidating price action or insufficient pivot points. Try adjusting the ZigZag threshold (lower for more sensitivity, higher for major moves only) or selecting a different timeframe for clearer trend structure."
+    
+    # If we have pivots but weak wave analysis
+    if len(pivots) > 0 and (not primary or getattr(primary, 'confidence_score', 0) < 30):
+        trend_direction = determine_overall_trend(pivots)
+        pivot_count = len(pivots)
+        
+        return f"📊 **{ticker} Market Structure Analysis**: Detected **{pivot_count} pivot points** showing {trend_direction} market structure. While no definitive Elliott Wave pattern emerges (confidence too low), the price action suggests {'continued momentum' if 'trend' in trend_direction else 'consolidation or complex correction'}. **Recommendation**: Monitor for clearer pattern development or adjust ZigZag sensitivity. Current structure may be in early wave formation or complex corrective phase requiring more price development for proper classification."
+    
+    # Standard analysis when we have good primary count
     primary_score = getattr(primary, 'confidence_score', 0) if hasattr(primary, 'confidence_score') else primary.get('confidence_score', 0)
     primary_pattern = getattr(primary, 'pattern_type', 'Unknown') if hasattr(primary, 'pattern_type') else primary.get('pattern_type', 'Unknown')
     
@@ -555,9 +566,11 @@ def generate_chart_summary(wave_analysis, invalidation_levels, ticker, primary_c
     current_wave = "unknown"
     if primary_count_labels and len(primary_count_labels) > 0:
         current_wave = str(primary_count_labels[-1])
+    elif hasattr(primary, 'labels') and len(primary.labels) > 0:
+        current_wave = str(primary.labels[-1].wave) if hasattr(primary.labels[-1], 'wave') else str(primary.labels[-1])
     
     # Build the summary paragraph
-    summary = f"**📈 {ticker} Elliott Wave Analysis Summary:** "
+    summary = f"**📈 {ticker} Elliott Wave Analysis:** "
     
     # Confidence assessment
     if primary_score > 75:
@@ -566,51 +579,87 @@ def generate_chart_summary(wave_analysis, invalidation_levels, ticker, primary_c
     elif primary_score > 60:
         confidence_text = "displays a **moderate Elliott Wave structure**"
         emoji = "🟡"
+    elif primary_score > 40:
+        confidence_text = "exhibits a **developing Elliott Wave pattern**"
+        emoji = "�"
     else:
-        confidence_text = "exhibits a **weak Elliott Wave pattern**"
-        emoji = "🔴"
+        confidence_text = "shows **early-stage wave formation**"
+        emoji = "�🔴"
     
     summary += f"The analysis {confidence_text} with {primary_score:.0f}% confidence {emoji}. "
     
-    # Pattern interpretation
+    # Pattern interpretation with more detail
     if "impulse" in primary_pattern.lower():
         if current_wave in ["1", "3", "5"]:
-            summary += f"Currently positioned in **Wave {current_wave}** of a 5-wave impulse sequence, suggesting the primary trend continues. "
+            wave_context = {
+                "1": "the initial impulse wave, often unnoticed by the broader market",
+                "3": "the strongest trending wave, typically with high volume and momentum", 
+                "5": "the final impulse wave, often showing momentum divergence"
+            }
+            summary += f"Currently positioned in **Wave {current_wave}** ({wave_context.get(current_wave, 'an impulse wave')}). "
         elif current_wave in ["2", "4"]:
-            summary += f"Currently in **Wave {current_wave}** correction within a 5-wave impulse, indicating a temporary pullback before trend resumption. "
+            wave_context = {
+                "2": "a corrective pullback after the initial impulse, often retracing 50-78.6%",
+                "4": "a sideways or shallow correction, typically alternating with wave 2's structure"
+            }
+            summary += f"Currently in **Wave {current_wave}** correction ({wave_context.get(current_wave, 'a corrective phase')}). "
         else:
-            summary += "The pattern suggests a **5-wave impulse structure** in the direction of the main trend. "
+            summary += "The pattern suggests a **5-wave impulse structure** developing in the primary trend direction. "
     elif "corrective" in primary_pattern.lower():
         if current_wave in ["A", "C"]:
-            summary += f"Currently in **Wave {current_wave}** of a corrective pattern, moving against the primary trend. "
+            wave_context = {
+                "A": "the initial corrective decline, breaking the previous trend",
+                "C": "the final corrective wave, often targeting Fibonacci extensions"
+            }
+            summary += f"Currently in **Wave {current_wave}** ({wave_context.get(current_wave, 'a corrective wave')} against the main trend). "
         elif current_wave == "B":
-            summary += f"Currently in **Wave B** counter-correction, providing a temporary bounce before the final corrective wave. "
+            summary += f"Currently in **Wave B** counter-correction, providing a temporary bounce that often confuses market participants. "
         else:
-            summary += "The pattern indicates a **3-wave correction** against the primary trend. "
+            summary += "The pattern indicates a **3-wave correction** running counter to the primary trend. "
     elif "diagonal" in primary_pattern.lower():
-        summary += "A **diagonal (wedge) pattern** is forming, typically signaling potential trend exhaustion and reversal. "
+        summary += "A **diagonal (wedge) pattern** is forming, typically appearing in final wave positions and signaling potential trend exhaustion. "
     else:
-        summary += f"The analysis identifies a **{primary_pattern}** pattern. "
+        summary += f"The analysis identifies a **{primary_pattern}** pattern with {len(pivots)} significant pivot points. "
     
     # Add invalidation level context
     invalidation_price = invalidation_levels.get('primary_invalidation')
     if invalidation_price:
-        summary += f"**Critical Level**: ${invalidation_price:.2f} - a break of this level would invalidate the current wave count and require pattern reassessment. "
+        summary += f"**Critical Level**: ${invalidation_price:.2f} - a break of this level would invalidate the current wave count. "
     
-    # Trading context
-    if "impulse" in primary_pattern.lower():
-        if current_wave in ["2", "4"]:
-            summary += "**Trading Implication**: This correction may offer entry opportunities for continuation of the main trend."
-        elif current_wave == "5":
-            summary += "**Trading Implication**: Final wave - watch for completion and potential reversal signals."
-        else:
-            summary += "**Trading Implication**: Trend continuation expected - consider positions aligned with the primary direction."
-    elif "corrective" in primary_pattern.lower():
-        summary += "**Trading Implication**: Counter-trend movement - expect eventual reversal back to primary trend direction."
+    # Enhanced trading context
+    if primary_score > 60:  # Only give specific trading advice for higher confidence
+        if "impulse" in primary_pattern.lower():
+            if current_wave in ["2", "4"]:
+                summary += "**Trading Opportunity**: Corrections offer potential entry points for trend continuation - watch for reversal signals at Fibonacci levels."
+            elif current_wave == "5":
+                summary += "**Trading Caution**: Final wave territory - monitor for completion signals and potential reversal patterns."
+            elif current_wave in ["1", "3"]:
+                summary += "**Trading Context**: Strong trending phase - align positions with primary direction and use pullbacks for entries."
+        elif "corrective" in primary_pattern.lower():
+            summary += "**Trading Strategy**: Counter-trend movement - expect eventual reversal, use tight stops, consider contrarian positioning."
     else:
-        summary += "**Trading Implication**: Monitor key levels and await clearer directional signals."
+        summary += "**Trading Approach**: Pattern still developing - wait for higher confidence or clearer directional signals before major positioning."
     
     return summary
+
+def determine_overall_trend(pivots):
+    """Determine overall market trend from pivot points"""
+    if len(pivots) < 3:
+        return "insufficient data for trend determination"
+    
+    # Compare first few and last few pivots to determine overall direction
+    start_prices = [p['price'] for p in pivots[:3]]
+    end_prices = [p['price'] for p in pivots[-3:]]
+    
+    start_avg = sum(start_prices) / len(start_prices)
+    end_avg = sum(end_prices) / len(end_prices)
+    
+    if end_avg > start_avg * 1.02:  # 2% threshold
+        return "an **upward trending**"
+    elif end_avg < start_avg * 0.98:  # 2% threshold
+        return "a **downward trending**" 
+    else:
+        return "a **sideways/consolidating**"
 
 # Initialize database
 init_db()
@@ -774,8 +823,15 @@ def main():
                 if analysis:
                     primary_labels = analysis.get('primary_count', {}).get('labels', [])
                     invalidation_levels = analysis.get('invalidation_levels', {})
+                    
+                    # Prepare analysis data with pivots for better context
+                    analysis_with_pivots = {
+                        'primary_count': analysis.get('primary_count'),
+                        'zigzag_pivots': analysis.get('zigzag_pivots', [])
+                    }
+                    
                     chart_summary = generate_chart_summary(
-                        {'primary_count': analysis.get('primary_count')}, 
+                        analysis_with_pivots, 
                         invalidation_levels, 
                         ticker,
                         primary_labels
@@ -784,6 +840,23 @@ def main():
                     st.markdown("---")
                     st.markdown("### 🎯 Chart Analysis Summary")
                     st.markdown(chart_summary)
+                    
+                    # Add debug info in an expander (temporary)
+                    with st.expander("🔍 Debug Info (Development)", expanded=False):
+                        st.write("**Analysis Results:**")
+                        primary_count = analysis.get('primary_count')
+                        if primary_count:
+                            st.json({
+                                'primary_confidence': getattr(primary_count, 'confidence_score', 'N/A'),
+                                'primary_pattern': getattr(primary_count, 'pattern_type', 'N/A'),
+                                'primary_labels': getattr(primary_count, 'labels', 'N/A')
+                            })
+                        else:
+                            st.write("No primary count found")
+                        
+                        st.write(f"**Pivot count:** {len(analysis.get('zigzag_pivots', []))}")
+                        st.write(f"**Invalidation levels:** {analysis.get('invalidation_levels', {})}")
+                    
                     st.markdown("---")
                 
             else:
