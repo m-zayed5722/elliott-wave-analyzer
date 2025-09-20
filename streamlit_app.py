@@ -661,7 +661,355 @@ def determine_overall_trend(pivots):
     else:
         return "a **sideways/consolidating**"
 
-# Initialize database
+def calculate_price_targets(analysis_results, current_price):
+    """Calculate Elliott Wave price targets based on current analysis"""
+    
+    if not analysis_results:
+        return {}
+    
+    primary = analysis_results.get('primary_count', {})
+    pivots = analysis_results.get('zigzag_pivots', [])
+    
+    if len(pivots) < 3:
+        return {}
+    
+    targets = {
+        'wave_targets': {},
+        'fibonacci_targets': {},
+        'support_resistance': {}
+    }
+    
+    try:
+        # Get recent pivot prices
+        recent_pivots = pivots[-5:] if len(pivots) >= 5 else pivots
+        pivot_prices = [p['price'] for p in recent_pivots]
+        
+        # Calculate Wave targets based on Elliott Wave principles
+        if len(pivot_prices) >= 3:
+            # Assume we have at least Wave 1 and Wave 2
+            wave_1_start = pivot_prices[0]
+            wave_1_end = pivot_prices[1] 
+            wave_2_end = pivot_prices[2] if len(pivot_prices) > 2 else current_price
+            
+            wave_1_length = abs(wave_1_end - wave_1_start)
+            
+            # Wave 3 targets (typically 1.618 x Wave 1)
+            if wave_1_end > wave_1_start:  # Uptrend
+                targets['wave_targets']['wave_3_minimum'] = wave_2_end + wave_1_length
+                targets['wave_targets']['wave_3_target'] = wave_2_end + (wave_1_length * 1.618)
+                targets['wave_targets']['wave_3_extension'] = wave_2_end + (wave_1_length * 2.618)
+                
+                # Wave 5 targets (often equal to Wave 1 or 0.618 of Wave 1-3)
+                wave_1_to_3_length = abs(targets['wave_targets']['wave_3_target'] - wave_1_start)
+                targets['wave_targets']['wave_5_target'] = targets['wave_targets']['wave_3_target'] + wave_1_length
+                targets['wave_targets']['wave_5_extension'] = wave_1_start + (wave_1_to_3_length * 1.618)
+                
+            else:  # Downtrend
+                targets['wave_targets']['wave_3_minimum'] = wave_2_end - wave_1_length
+                targets['wave_targets']['wave_3_target'] = wave_2_end - (wave_1_length * 1.618)
+                targets['wave_targets']['wave_3_extension'] = wave_2_end - (wave_1_length * 2.618)
+                
+                wave_1_to_3_length = abs(targets['wave_targets']['wave_3_target'] - wave_1_start)
+                targets['wave_targets']['wave_5_target'] = targets['wave_targets']['wave_3_target'] - wave_1_length
+                targets['wave_targets']['wave_5_extension'] = wave_1_start - (wave_1_to_3_length * 1.618)
+        
+        # Support and Resistance from recent pivots
+        targets['support_resistance']['major_support'] = min(pivot_prices[-3:])
+        targets['support_resistance']['major_resistance'] = max(pivot_prices[-3:])
+        targets['support_resistance']['immediate_support'] = min(pivot_prices[-2:])
+        targets['support_resistance']['immediate_resistance'] = max(pivot_prices[-2:])
+        
+        # Enhanced Fibonacci targets
+        fib_levels = analysis_results.get('fibonacci_levels', {})
+        if fib_levels:
+            targets['fibonacci_targets'] = fib_levels
+            
+    except Exception as e:
+        st.error(f"Error calculating price targets: {str(e)}")
+        
+    return targets
+
+def create_multi_timeframe_analysis(ticker, timeframes=['daily', '4h', '1h']):
+    """Create multi-timeframe Elliott Wave analysis"""
+    
+    multi_analysis = {}
+    
+    for tf in timeframes:
+        try:
+            # Adjust range based on timeframe
+            if tf == 'daily':
+                range_period = '2y'
+                threshold = 4.0
+            elif tf == '4h':
+                range_period = '6mo'  
+                threshold = 2.5
+            else:  # 1h
+                range_period = '3mo'
+                threshold = 1.5
+                
+            # Fetch data
+            df = fetch_stock_data(ticker, tf, range_period)
+            
+            if not df.empty:
+                # Analyze waves
+                analysis = analyze_elliott_waves(df, threshold)
+                multi_analysis[tf] = {
+                    'data': df,
+                    'analysis': analysis,
+                    'threshold': threshold
+                }
+            
+        except Exception as e:
+            st.warning(f"Could not analyze {tf} timeframe: {str(e)}")
+            
+    return multi_analysis
+
+def display_price_targets(targets, current_price):
+    """Display price targets in an organized format"""
+    
+    if not targets:
+        st.info("No price targets calculated - need more pivot data")
+        return
+    
+    st.subheader("🎯 Price Targets & Levels")
+    
+    # Wave Targets
+    wave_targets = targets.get('wave_targets', {})
+    if wave_targets:
+        st.write("**📈 Elliott Wave Price Targets:**")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if 'wave_3_target' in wave_targets:
+                target = wave_targets['wave_3_target']
+                distance = ((target - current_price) / current_price) * 100
+                st.metric(
+                    "🎯 Wave 3 Target",
+                    f"${target:.2f}",
+                    f"{distance:+.1f}%",
+                    help="Primary Wave 3 target (1.618x Wave 1)"
+                )
+            
+            if 'wave_5_target' in wave_targets:
+                target = wave_targets['wave_5_target'] 
+                distance = ((target - current_price) / current_price) * 100
+                st.metric(
+                    "🏁 Wave 5 Target", 
+                    f"${target:.2f}",
+                    f"{distance:+.1f}%",
+                    help="Wave 5 target (equality with Wave 1)"
+                )
+        
+        with col2:
+            if 'wave_3_extension' in wave_targets:
+                target = wave_targets['wave_3_extension']
+                distance = ((target - current_price) / current_price) * 100
+                st.metric(
+                    "🚀 Wave 3 Extension",
+                    f"${target:.2f}", 
+                    f"{distance:+.1f}%",
+                    help="Extended Wave 3 target (2.618x Wave 1)"
+                )
+                
+            if 'wave_5_extension' in wave_targets:
+                target = wave_targets['wave_5_extension']
+                distance = ((target - current_price) / current_price) * 100
+                st.metric(
+                    "🎯 Wave 5 Extension",
+                    f"${target:.2f}",
+                    f"{distance:+.1f}%", 
+                    help="Extended Wave 5 target"
+                )
+    
+    # Support/Resistance
+    sr_levels = targets.get('support_resistance', {})
+    if sr_levels:
+        st.write("**🛡️ Support & Resistance Levels:**")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if 'major_support' in sr_levels:
+                level = sr_levels['major_support']
+                distance = ((level - current_price) / current_price) * 100
+                st.metric(
+                    "🔻 Major Support",
+                    f"${level:.2f}",
+                    f"{distance:+.1f}%"
+                )
+                
+            if 'immediate_support' in sr_levels:
+                level = sr_levels['immediate_support']
+                distance = ((level - current_price) / current_price) * 100  
+                st.metric(
+                    "📉 Immediate Support",
+                    f"${level:.2f}",
+                    f"{distance:+.1f}%"
+                )
+        
+        with col2:
+            if 'major_resistance' in sr_levels:
+                level = sr_levels['major_resistance']
+                distance = ((level - current_price) / current_price) * 100
+                st.metric(
+                    "🔺 Major Resistance", 
+                    f"${level:.2f}",
+                    f"{distance:+.1f}%"
+                )
+                
+            if 'immediate_resistance' in sr_levels:
+                level = sr_levels['immediate_resistance']
+                distance = ((level - current_price) / current_price) * 100
+                st.metric(
+                    "📈 Immediate Resistance",
+                    f"${level:.2f}",
+                    f"{distance:+.1f}%"
+                )
+
+def scan_multiple_stocks(symbols, timeframe='daily', threshold=4.0):
+    """Scan multiple stocks for Elliott Wave patterns"""
+    
+    results = []
+    
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    for i, symbol in enumerate(symbols):
+        try:
+            status_text.text(f"Analyzing {symbol}... ({i+1}/{len(symbols)})")
+            progress_bar.progress((i + 1) / len(symbols))
+            
+            # Fetch data
+            df = fetch_stock_data(symbol, timeframe, '1y')
+            
+            if not df.empty:
+                # Analyze waves
+                analysis = analyze_elliott_waves(df, threshold)
+                
+                if analysis and analysis.get('primary_count'):
+                    primary = analysis.get('primary_count', {})
+                    score = getattr(primary, 'confidence_score', 0) if hasattr(primary, 'confidence_score') else primary.get('confidence_score', 0)
+                    pattern = getattr(primary, 'pattern_type', 'Unknown') if hasattr(primary, 'pattern_type') else primary.get('pattern_type', 'Unknown')
+                    
+                    current_price = df['close'].iloc[-1] if not df.empty else 0
+                    
+                    # Calculate price targets
+                    targets = calculate_price_targets(analysis, current_price)
+                    
+                    results.append({
+                        'symbol': symbol,
+                        'confidence': score,
+                        'pattern': pattern,
+                        'current_price': current_price,
+                        'analysis': analysis,
+                        'targets': targets
+                    })
+                    
+        except Exception as e:
+            st.warning(f"Could not analyze {symbol}: {str(e)}")
+            continue
+    
+    progress_bar.empty()
+    status_text.empty()
+    
+    return results
+
+def display_scanner_results(scan_results):
+    """Display pattern scanner results in organized format"""
+    
+    if not scan_results:
+        st.warning("No patterns found in scanned symbols")
+        return
+    
+    # Sort by confidence score
+    scan_results.sort(key=lambda x: x['confidence'], reverse=True)
+    
+    st.subheader(f"🔍 Pattern Scanner Results ({len(scan_results)} symbols analyzed)")
+    
+    # Create filter options
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        min_confidence = st.slider("Minimum Confidence %", 0, 100, 50)
+    with col2:
+        pattern_filter = st.selectbox("Pattern Type", ['All', 'impulse', 'corrective', 'diagonal'])
+    with col3:
+        max_results = st.number_input("Max Results", 1, 50, 10)
+    
+    # Filter results
+    filtered_results = []
+    for result in scan_results:
+        if result['confidence'] >= min_confidence:
+            if pattern_filter == 'All' or pattern_filter.lower() in result['pattern'].lower():
+                filtered_results.append(result)
+    
+    # Limit results
+    filtered_results = filtered_results[:max_results]
+    
+    if not filtered_results:
+        st.info("No symbols match the current filters")
+        return
+    
+    # Display results in expandable cards
+    for result in filtered_results:
+        confidence = result['confidence']
+        symbol = result['symbol']
+        pattern = result['pattern']
+        price = result['current_price']
+        
+        # Determine emoji based on confidence
+        if confidence > 75:
+            emoji = "🟢"
+        elif confidence > 60:
+            emoji = "🟡"
+        else:
+            emoji = "🔴"
+        
+        with st.expander(f"{emoji} {symbol} - {pattern.title()} ({confidence:.1f}%) - ${price:.2f}"):
+            
+            col_a, col_b, col_c = st.columns(3)
+            
+            with col_a:
+                st.metric("Confidence Score", f"{confidence:.1f}%")
+                st.metric("Current Price", f"${price:.2f}")
+            
+            with col_b:
+                st.metric("Pattern Type", pattern.title())
+                
+                # Show key levels if available
+                targets = result.get('targets', {})
+                wave_targets = targets.get('wave_targets', {})
+                if 'wave_3_target' in wave_targets:
+                    target = wave_targets['wave_3_target']
+                    upside = ((target - price) / price) * 100
+                    st.metric("Wave 3 Target", f"${target:.2f}", f"+{upside:.1f}%")
+            
+            with col_c:
+                # Support/Resistance
+                sr_levels = targets.get('support_resistance', {})
+                if 'major_support' in sr_levels:
+                    support = sr_levels['major_support']
+                    downside = ((support - price) / price) * 100
+                    st.metric("Major Support", f"${support:.2f}", f"{downside:.1f}%")
+                
+                if 'major_resistance' in sr_levels:
+                    resistance = sr_levels['major_resistance'] 
+                    upside = ((resistance - price) / price) * 100
+                    st.metric("Major Resistance", f"${resistance:.2f}", f"+{upside:.1f}%")
+            
+            # Analysis summary for this symbol
+            analysis = result.get('analysis', {})
+            if analysis:
+                invalidation = analysis.get('invalidation_levels', {})
+                summary = generate_chart_summary(
+                    {'primary_count': analysis.get('primary_count'), 'zigzag_pivots': analysis.get('zigzag_pivots', [])},
+                    invalidation,
+                    symbol,
+                    []
+                )
+                st.markdown("**Analysis Summary:**")
+                st.markdown(summary)# Initialize database
 init_db()
 
 # Main app
@@ -919,8 +1267,76 @@ def main():
                        f"• {len(retracements)} retracement levels\n" +
                        f"• {len(extensions)} extension targets")
             
+            # Add Price Targets section
+            st.markdown("---")
+            current_price = st.session_state.price_data['close'].iloc[-1] if st.session_state.price_data is not None and not st.session_state.price_data.empty else 0
+            
+            if current_price > 0:
+                price_targets = calculate_price_targets(analysis, current_price)
+                display_price_targets(price_targets, current_price)
+            
         else:
             st.info("👈 Select a stock symbol and click 'Analyze Waves' to begin")
+            
+        # Multi-timeframe Analysis Toggle
+        st.markdown("---")
+        if st.checkbox("🔄 Multi-Timeframe Analysis", help="Analyze multiple timeframes for confluence"):
+            if st.session_state.analysis_results:
+                with st.spinner("Analyzing multiple timeframes..."):
+                    multi_tf_analysis = create_multi_timeframe_analysis(ticker)
+                    
+                if multi_tf_analysis:
+                    st.subheader("📊 Multi-Timeframe Elliott Wave Analysis")
+                    
+                    # Create tabs for different timeframes
+                    if len(multi_tf_analysis) > 1:
+                        tf_tabs = st.tabs([f"📅 {tf.upper()}" for tf in multi_tf_analysis.keys()])
+                        
+                        for i, (tf, tf_data) in enumerate(multi_tf_analysis.items()):
+                            with tf_tabs[i]:
+                                tf_analysis = tf_data.get('analysis')
+                                if tf_analysis and tf_analysis.get('primary_count'):
+                                    primary = tf_analysis.get('primary_count', {})
+                                    score = getattr(primary, 'confidence_score', 0) if hasattr(primary, 'confidence_score') else primary.get('confidence_score', 0)
+                                    pattern = getattr(primary, 'pattern_type', 'Unknown') if hasattr(primary, 'pattern_type') else primary.get('pattern_type', 'Unknown')
+                                    
+                                    col_a, col_b = st.columns(2)
+                                    
+                                    with col_a:
+                                        st.metric(f"{tf.upper()} Confidence", f"{score:.1f}%")
+                                        
+                                    with col_b:
+                                        st.metric(f"{tf.upper()} Pattern", pattern)
+                                    
+                                    # Mini chart for this timeframe
+                                    tf_df = tf_data.get('data')
+                                    if tf_df is not None and not tf_df.empty:
+                                        fig_mini = create_candlestick_chart(tf_df, tf_analysis)
+                                        fig_mini.update_layout(height=300)
+                                        st.plotly_chart(fig_mini, use_container_width=True)
+                                else:
+                                    st.warning(f"No clear pattern detected in {tf.upper()} timeframe")
+                    
+                    # Timeframe confluence analysis
+                    st.markdown("### 🎯 Timeframe Confluence")
+                    confluence_scores = []
+                    for tf, tf_data in multi_tf_analysis.items():
+                        tf_analysis = tf_data.get('analysis')
+                        if tf_analysis and tf_analysis.get('primary_count'):
+                            primary = tf_analysis.get('primary_count', {})
+                            score = getattr(primary, 'confidence_score', 0) if hasattr(primary, 'confidence_score') else primary.get('confidence_score', 0)
+                            confluence_scores.append(score)
+                    
+                    if confluence_scores:
+                        avg_confidence = sum(confluence_scores) / len(confluence_scores)
+                        if avg_confidence > 70:
+                            st.success(f"🟢 **Strong Confluence** ({avg_confidence:.1f}%) - Multiple timeframes align!")
+                        elif avg_confidence > 50:
+                            st.warning(f"🟡 **Moderate Confluence** ({avg_confidence:.1f}%) - Some timeframe alignment")
+                        else:
+                            st.error(f"🔴 **Weak Confluence** ({avg_confidence:.1f}%) - Timeframes show conflicting patterns")
+                else:
+                    st.warning("Could not perform multi-timeframe analysis - check connection or try different symbol")
             
         # Chart Legend - Always visible
         st.subheader("🗺️ Chart Legend")
@@ -1065,11 +1481,108 @@ def main():
                     help="Download complete analysis data including chart descriptions"
                 )
     
-    # Footer
+    # Footer with new features
+    st.markdown("---")
+    
+    # Pattern Scanner Section  
+    st.subheader("🔍 Elliott Wave Pattern Scanner")
+    
+    with st.expander("📊 Scan Multiple Stocks for Elliott Wave Setups", expanded=False):
+        st.markdown("**Search for Elliott Wave patterns across multiple stocks simultaneously**")
+        
+        # Predefined stock lists
+        stock_lists = {
+            "S&P 500 Top 10": ["AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "TSLA", "META", "GOOG", "BRK-B", "UNH"],
+            "FAANG Stocks": ["META", "AAPL", "AMZN", "NFLX", "GOOGL"],
+            "Tech Leaders": ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META", "CRM", "ORCL", "ADBE"],
+            "Crypto Leaders": ["BTC-USD", "ETH-USD", "BNB-USD", "XRP-USD", "ADA-USD"],
+            "Custom": []
+        }
+        
+        col_scan1, col_scan2 = st.columns(2)
+        
+        with col_scan1:
+            selected_list = st.selectbox("Select Stock List", list(stock_lists.keys()))
+            
+            if selected_list == "Custom":
+                custom_symbols = st.text_area(
+                    "Enter symbols (comma-separated)",
+                    placeholder="AAPL, MSFT, TSLA, GOOGL",
+                    help="Enter stock symbols separated by commas"
+                )
+                symbols_to_scan = [s.strip().upper() for s in custom_symbols.split(",") if s.strip()]
+            else:
+                symbols_to_scan = stock_lists[selected_list]
+                st.info(f"Will scan: {', '.join(symbols_to_scan)}")
+        
+        with col_scan2:
+            scan_timeframe = st.selectbox("Scanner Timeframe", ["daily", "4h", "1h"], key="scanner_tf")
+            scan_threshold = st.slider("Scanner ZigZag %", 1.0, 8.0, 4.0, key="scanner_threshold")
+        
+        if st.button("🚀 Start Pattern Scan", type="primary"):
+            if symbols_to_scan:
+                with st.spinner(f"Scanning {len(symbols_to_scan)} symbols for Elliott Wave patterns..."):
+                    scan_results = scan_multiple_stocks(symbols_to_scan, scan_timeframe, scan_threshold)
+                
+                if scan_results:
+                    display_scanner_results(scan_results)
+                else:
+                    st.warning("No Elliott Wave patterns found in the scanned symbols. Try adjusting the threshold or selecting different symbols.")
+            else:
+                st.error("Please select or enter symbols to scan")
+    
+    # Additional Tools Section
+    with st.expander("🛠️ Additional Elliott Wave Tools", expanded=False):
+        st.markdown("### 🔧 Professional Trading Tools")
+        
+        tool_col1, tool_col2 = st.columns(2)
+        
+        with tool_col1:
+            st.markdown("""
+            **📊 Analysis Features:**
+            - Multi-timeframe confirmation
+            - Price target calculations  
+            - Support/resistance levels
+            - Pattern confidence scoring
+            - Risk management levels
+            """)
+            
+        with tool_col2:
+            st.markdown("""
+            **🎯 Trading Applications:**
+            - Entry/exit point identification
+            - Position sizing guidance
+            - Stop-loss placement
+            - Profit target setting
+            - Risk-reward analysis
+            """)
+        
+        st.markdown("### 📚 Elliott Wave Education")
+        
+        edu_col1, edu_col2 = st.columns(2)
+        
+        with edu_col1:
+            st.markdown("""
+            **📖 Wave Patterns:**
+            - **Impulse Waves**: 1-2-3-4-5 structure
+            - **Corrective Waves**: A-B-C structure  
+            - **Diagonal Patterns**: Wedge formations
+            - **Triangle Patterns**: Consolidation phases
+            """)
+            
+        with edu_col2:
+            st.markdown("""
+            **🎯 Key Rules:**
+            1. Wave 2 cannot retrace more than 100% of Wave 1
+            2. Wave 3 is never the shortest impulse wave
+            3. Wave 4 cannot overlap Wave 1 territory
+            4. Corrections alternate between simple and complex
+            """)
+    
     st.markdown("---")
     st.markdown(
         "*Built with Streamlit • Powered by Yahoo Finance • "
-        "[View Source Code](https://github.com/yourusername/elliott-wave-analyzer)*"
+        f"[View Source Code](https://github.com/{st.secrets.get('GITHUB_USER', 'm-zayed5722')}/elliott-wave-analyzer)*"
     )
 
 if __name__ == "__main__":
